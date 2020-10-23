@@ -247,9 +247,9 @@ contains
     ralf    = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
 
     ! Make all relevant variables dimensionless
-    call DimlessVars()
+    call make_dimless_vars()
 
-    if (mype==0) then
+    if (mype == 0) then
       ! Store overview in a log file for easy reference
       inputlog = trim(base_filename) // '_param_overview.log'
       open(unit=94,file=inputlog)
@@ -267,24 +267,20 @@ contains
       write(94,*) 'unit numberdensity = ', unit_numberdensity
       write(94,*) 'unit pressure      = ', unit_pressure
       write(94,*) 'unit temperature   = ', unit_temperature
-      if (iprob==1) write(94,*) 'unit magneticfield = ', unit_magneticfield
+      if (iprob == 1) write(94,*) 'unit magneticfield = ', unit_magneticfield
       write(94,*) 'unit time          = ', unit_time
       write(94,*)
       write(94,*) '==========='
       write(94,*) '   SETUP   '
       write(94,*) '==========='
-      write(94,*) 'Problem options:                                               '
-      write(94,*) '   iprob = 0 : non-magnetic, finite disk, Sobolev model (CAK)  '
-      write(94,*) '   iprob = 1 : magnetosphere using a relaxed CAK model as input'
+      write(94,*) 'Problem options:                                  '
+      write(94,*) '  iprob = 0 : non-magnetic, finite disk, CAK model'
+      write(94,*) '  iprob = 1 : CAK-magnetosphere model             '
       write(94,*) '> Chosen option = ', iprob
-      if (iprob==0 .and. typedivbfix/='ct') then
-        write(94,*) '> Making a CAK wind to be put in a non-CT magnetosphere model'
-      elseif (iprob==0 .and. typedivbfix=='ct') then
-        write(94,*) '> Making a CAK wind to be put in a CT magnetosphere model    '
-      elseif (iprob==1 .and. (.not. stagger_grid)) then
-        write(94,*) '> Making a non-CT magnetosphere model with cleaner:          ', typedivbfix
-      elseif (iprob==1 .and. stagger_grid) then
-        write(94,*) '> Making a CT magnetosphere model with option:               ', type_ct
+      if (iprob == 0) then
+        write(94,*) '> Making a CAK wind to be put in a magnetosphere model'
+      elseif (iprob == 1) then
+        write(94,*) '> Making a magnetosphere model with cleaner:', typedivbfix
       else
         call mpistop('Choose a valid iprob {0,1}')
       endif
@@ -296,9 +292,9 @@ contains
       write(94,*) 'Mstar/Msun             = ', mstar/msun
       write(94,*) 'Rstar/Rsun             = ', rstar/rsun
       write(94,*) 'Twind                  = ', twind
-      if (iprob==1) write(94,*) 'Polar magnetic field   = ', bpole
-      if (iprob==1) write(94,*) 'Wind confinement eta   = ', etastar
-      if (iprob==1) write(94,*) 'Ralf/Rstar             = ', ralf
+      if (iprob == 1) write(94,*) 'Polar magnetic field   = ', bpole
+      if (iprob == 1) write(94,*) 'Wind confinement eta   = ', etastar
+      if (iprob == 1) write(94,*) 'Ralf/Rstar             = ', ralf
       write(94,*) 'Mean molecular weight  = ', mumol
       write(94,*) 'log(g)                 = ', logg
       write(94,*) 'eff. log(g)            = ', logge
@@ -329,8 +325,8 @@ contains
       write(94,*) 'Mstar        = ', dmstar
       write(94,*) 'Rstar        = ', drstar
       write(94,*) 'Twind        = ', dtwind
-      if (iprob==1) write(94,*) 'Bpole        = ', dbpole
-      if (iprob==1) write(94,*) 'Eta conf.    = ', detaconf
+      if (iprob == 1) write(94,*) 'Bpole        = ', dbpole
+      if (iprob == 1) write(94,*) 'Eta conf.    = ', detaconf
       write(94,*) 'Edd. gamma   = ', dgammae
       write(94,*) 'rhobound     = ', drhobound
       write(94,*) 'Mdot         = ', dmdot
@@ -830,7 +826,7 @@ contains
 
 !===============================================================================
 
-  subroutine DimlessVars()
+  subroutine make_dimless_vars()
     !
     ! Normalize quantities in use to unit quantities defined and computed
     ! These quantities are actually used by AMRVAC in its computations!
@@ -859,7 +855,7 @@ contains
     detaconf  = ((dbpole/2.0d0)**2.0d0 * drstar**2.0d0)/(dmdot * dvinf)
     dtstat    = tstat/unit_time
 
-  end subroutine DimlessVars
+  end subroutine make_dimless_vars
 
 !===============================================================================
 
