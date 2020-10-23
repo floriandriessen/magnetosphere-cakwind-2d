@@ -146,9 +146,6 @@ contains
     ! Adjusted timestep to account for total radiation force
     usr_get_dt => special_dt
 
-    ! Do special refinement near the magnetic equatorial plane (only iprob=1)
-    !usr_refine_grid => special_refine_grid
-
     ! Every iteration retrieve global grid info and perform operations on it
     ! to make time-averaged statistical quantities of wind
     usr_process_grid => compute_stats
@@ -354,10 +351,12 @@ contains
     !
     use mod_global_parameters
 
+    ! Subroutine arguments
     integer, intent(in)             :: ixI^L, ixO^L
     double precision, intent(in)    :: x(ixI^S,1:ndim)
     double precision, intent(inout) :: w(ixI^S,1:nw)
 
+    ! Local variables
     real(8) :: rho, vr, sfac
     integer :: i, j          ! dummy indices for radial + theta grid
 
@@ -451,14 +450,16 @@ contains
 
   subroutine special_bound(qt,ixI^L,ixB^L,iB,w,x)
     !
-    ! Boundary values are straight computed in dimensionless unites (easy)
+    ! Modified boundary values only at lower radial boundary (star)
     !
     use mod_global_parameters
 
+    ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixB^L, iB
     real(8), intent(in)    :: qt, x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
+    ! Local variables
     real(8) :: vr(ixI^S), vpol(ixI^S)
     integer :: i, j      ! dummy indices for radial + theta grid
     integer :: ixBs^L    ! Face indices cell
@@ -567,11 +568,13 @@ contains
     !
     use mod_global_parameters
 
+    ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L, iw^LIM
     real(8), intent(in)    :: qdt, qtC, qt
     real(8), intent(in)    :: wCT(ixI^S,1:nw), x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
+    ! Local variables
     real(8) :: dvdr_up(ixI^S), dvdr_down(ixI^S), dvdr_cent(ixI^S)
     real(8) :: forw(ixI^S), backw(ixI^S), cent(ixI^S)
     real(8) :: gcak(ixI^S), geff(ixI^S)
@@ -703,6 +706,7 @@ contains
     !
     use mod_global_parameters
 
+    ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L
     real(8), intent(in)    :: dx^D, x(ixI^S,1:ndim)
     real(8), intent(in)    :: w(ixI^S,1:nw)
@@ -741,13 +745,15 @@ contains
     ! compute the current timestep <X> again
     !
     use mod_global_parameters
+
+    ! Subroutine arguments
     integer, intent(in)             :: igrid,level,ixI^L,ixO^L
     double precision, intent(in)    :: qt,x(ixI^S,1:ndim)
     double precision, intent(inout) :: w(ixI^S,1:nw)
 
+    ! Local variables
     logical :: first_time = .true.
     real(8) :: tnorm
-
 
     if (global_time>=dtstat) then
       !
@@ -859,51 +865,19 @@ contains
 
 !===============================================================================
 
-  subroutine special_refine_grid(igrid,level,ixI^L,ixO^L,qt,w,x,refine,coarsen)
-    !
-    ! FROM THE AMRVAC DOCUMENTATION:
-    !> Enforce additional refinement or coarsening
-    !> 1.0d0 can use the coordinate info in x and/or time qt=t_n and w(t_n) values w.
-    !> you must set consistent values for integers refine/coarsen:
-    !> refine = -1 enforce to not refine
-    !> refine =  0 doesn't enforce anything
-    !> refine =  1 enforce refinement
-    !> coarsen = -1 enforce to not coarsen
-    !> coarsen =  0 doesn't enforce anything
-    !> coarsen =  1 enforce coarsen
-    !> e.g. refine for negative first coordinate x < 0 as
-    !> if (any(x(ix^S,1) < zero)) refine=1
-    !
-    use mod_global_parameters
-
-    integer, intent(in)     :: igrid, level, ixI^L, ixO^L
-    real(8), intent(in)     :: qt, w(ixI^S,1:nw), x(ixI^S,1:ndim)
-    integer, intent(inout)  :: refine, coarsen
-
-    real(8) :: upper, lower
-
-    ! Refine in polar direction above and below the magnetic equatorial plane
-    upper = (0.5d0 + 1.0d0/16.0d0)*dpi
-    lower = (0.5d0 - 1.0d0/16.0d0)*dpi
-
-    ! pi/16 wedge above and below equator
-    if (any(x(ixI^S,2) < upper) .and. any(x(ixI^S,2) > lower)) refine = 1
-
-  end subroutine special_refine_grid
-
-!===============================================================================
-
   subroutine set_extravar_output(ixI^L,ixO^L,w,x,normconv)
     !
     ! Computes and stores additional variables of interest
     !
     use mod_global_parameters
 
+    ! Subroutine arguments
     integer, intent(in) :: ixI^L,ixO^L
     real(8), intent(in) :: x(ixI^S,1:ndim)
     real(8)             :: w(ixI^S,nw+nwauxio)
     real(8)             :: normconv(0:nw+nwauxio)
 
+    ! Local variable
     real(8) :: divbboy(ixI^S)
 
     ! Output the Alfven speed by summing squared Bfield in each direction
@@ -942,6 +916,8 @@ contains
     ! polar field strength set by dimensionless 'dbpole'
     !
     use mod_global_parameters
+
+    ! Subroutine arguments
     integer, intent(in)           :: ixI^L,ixO^L
     double precision, intent(in)  :: x(ixI^S,1:ndim)
     double precision, intent(inout) :: wB0(ixI^S,1:ndir)
