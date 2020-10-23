@@ -190,10 +190,13 @@ contains
     !
     ! Read in the usr.par file with the problem specific list
     !
-    use mod_global_parameters, only: unitpar, stagger_grid
+    use mod_global_parameters, only: unitpar
     use mod_constants
 
+    ! Subroutine argument
     character(len=*), intent(in) :: files(:)
+
+    ! Local variable
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, bpole, rhobound, alpha, &
@@ -345,20 +348,22 @@ contains
 
 !===============================================================================
 
-  subroutine initial_conditions(ixI^L, ixO^L, w, x)
+  subroutine initial_conditions(ixI^L,ixO^L,w,x)
     !
-    ! Initial conditions are straight computed in dimensionless units (easy)
+    ! Initial conditions start from beta velocity law for relaxing CAK model
+    !
+    ! For magnetosphere the intial conditions are only supplied for the Bfield
+    ! as the other hydro vars are already set by a relaxed CAK model
     !
     use mod_global_parameters
 
     ! Subroutine arguments
-    integer, intent(in)             :: ixI^L, ixO^L
+    integer, intent(in)    :: ixI^L, ixO^L
     real(8), intent(in)    :: x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
-    ! Local variables
-    real(8) :: rho, vr, sfac
-    integer :: i, j          ! dummy indices for radial + theta grid
+    ! Local variable
+    real(8) :: sfac
 
     !==================================================================
     ! Make a non-magnetic CAK model to be used later in a magnetosphere
@@ -368,51 +373,40 @@ contains
       ! Small offset (asound/vinf) to avoid starting at terminal wind speed
       sfac = 1.0d0 - 1.0d-3**(1.0d0/beta)
 
-      do j = ixImin2,ixImax2
-        do i = ixImin1,ixImax1
-          if (x(i,j,1) >= drstar) then
+      where (x(ixI^S,1) >= drstar)
+         ! Set initial velocity field to beta law
+         w(ixI^S,mom(1)) = dvinf * ( 1.0d0 - sfac * drstar / x(ixI^S,1) )**beta
 
-            ! Set initial radial velocity field to beta law
-            vr = dvinf * (1.0d0 - sfac*(drstar/x(i,j,1)))**beta
+         ! Set initial density
+         w(ixI^S,rho_) = dmdot/(4.0d0*dpi * x(ixI^S,1)**2.0d0 * w(ixI^S,mom(1)))
+      endwhere
 
-            ! Set initial density
-            rho = dmdot / (4.0d0*dpi * x(i,j,1)**2.0d0 * vr)
-
-            w(i,j,rho_)   = rho
-            w(i,j,mom(1)) = rho * vr
-
-            ! Set no polar and azimuthal velocities
-            w(i,j,mom(2)) = 0.0d0
-            w(i,j,mom(3)) = 0.0d0
-          else
-            w(i,j,rho_)   = drhobound
-            w(i,j,mom(1)) = 0.0d0
-            w(i,j,mom(2)) = 0.0d0
-            w(i,j,mom(3)) = 0.0d0
-          endif
-        enddo
-      enddo
+      ! Set no polar and azimuthal velocities
+      w(ixI^S,mom(2)) = 0.0d0
+      w(ixI^S,mom(3)) = 0.0d0
 
       ! Set the magnetic field components (doing HD so no magnetic field now)
       w(ixI^S,mag(1)) = 0.0d0
       w(ixI^S,mag(2)) = 0.0d0
       w(ixI^S,mag(3)) = 0.0d0
+
+      ! Convert hydro vars to conserved to let AMRVAC do computations
+      call mhd_to_conserved(ixI^L,ixO^L,w,x)
     endif
 
-    !==================================
-    ! Make a magnetosphere from restart
-    !==================================
+    !============================
+    ! Make a magnetosphere model
+    !============================
     if (iprob == 1) then
-      !
+
       ! Setup magnetic field based on Tanaka splitting or regular
-      !
       if (B0field) then
         w(ixI^S,mag(:)) = 0.0d0
       else
-        ! Radial magnetic field
+        ! Radial magnetic dipole field
         w(ixI^S,mag(1)) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
 
-        ! Polar magnetic field
+        ! Polar magnetic dipole field
         w(ixI^S,mag(2)) = 0.5d0 * dbpole &
                           * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
 
@@ -423,6 +417,11 @@ contains
       ! If using Dedner+(2002) divergence cleaning
       if(mhd_glm) w(ixO^S,psi_) = 0.0d0
 
+      !
+      ! No need to convert here to conserved variables; the w-array in the
+      ! restart file is by default in conserved variables and the Bfield here
+      ! does not need any conversion primitive-conserved
+      !
     endif
 
     ! Initialize the CAK line-force and statistical quantities
@@ -501,31 +500,31 @@ contains
         w(ixI^S,mag(3)) = 0.0d0
       endif
 
-      !====================================
-      ! Restart from non-magnetic CAK model
-      !====================================
+      !====================
+      ! Magnetosphere model
+      !====================
       if (iprob == 1) then
 
         if (B0field) then
           w(ixB^S,mag(:)) = 0.0d0
         else
-          ! Radial magnetic field component
+          ! Radial magnetic dipole field
           w(ixB^S,mag(1)) = dbpole * dcos(x(ixB^S,2))
 
-          ! Polar magnetic field component
+          !
+          ! Polar magnetic dipole field
+          !   > Magnetic confinement: do linear extrapolation
+          !   > Negligible confinement: set to zero
+          !
           if (etastar >= 1.0d0) then
-            !
-            ! Magnetic confinement, do linear extrapolation
-            !
+
             do i = ixBmax1,ixBmin1,-1
               w(i,:,mag(2)) = w(i+1,:,mag(2)) &
                               - (w(i+2,:,mag(2)) - w(i+1,:,mag(2))) &
                               * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
             enddo
           else
-            !
-            ! Negligible confinement, set to zero
-            !
+
             w(ixB^S,mag(2)) = 0.0d0
           endif
 
