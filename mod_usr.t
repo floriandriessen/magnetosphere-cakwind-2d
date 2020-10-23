@@ -462,12 +462,11 @@ contains
     real(8), intent(in)    :: qt, x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
-    ! Local variables
-    real(8) :: vr(ixI^S), vpol(ixI^S)
-    integer :: i, j      ! dummy indices for radial + theta grid
+    ! Local variable
+    integer :: i
 
-    vr(ixI^S) = w(ixI^S,mom(1))/w(ixI^S,rho_) ! velocity from momentum
-    vpol(ixI^S) = w(ixI^S,mom(2))/w(ixI^S,rho_)
+    ! Convert hydro vars to primitive
+    call mhd_to_primitive(ixI^L,ixI^L,w,x)
 
     select case (iB)
 
@@ -478,13 +477,13 @@ contains
       ! Radial velocity field (slope extrapolation in 1st ghost, then constant)
       do i = ixBmax1,ixBmin1,-1
         if (i == ixBmax1) then
-          vr(i,:) = vr(i+1,:) - (vr(i+2,:) - vr(i+1,:)) &
-                            * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
+          w(i,:,mom(1)) = w(i+1,:,mom(1)) &
+                           - (w(i+2,:,mom(1)) - w(i+1,:,mom(1))) &
+                           * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
         else
-          vr(i,:) = vr(i+1,:)
+          w(i,:,mom(1)) = w(i+1,:,mom(1))
         endif
 
-        w(i,:,mom(1)) = drhobound * vr(i,:)
       enddo
 
       ! Polar velocity field
@@ -543,14 +542,8 @@ contains
       ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
       ! Also avoid overloading too much, limit to negative sound speed momentum
       !
-      do j = ixImin2,ixImax2
-        do i = ixBmin1,ixBmax1
-          w(i,j,mom(1)) = min(w(i,j,mom(1)), drhobound*dasound)
-          w(i,j,mom(1)) = max(w(i,j,mom(1)), -drhobound*dasound)
-          w(i,j,mom(2)) = min(w(i,j,mom(2)), drhobound*dasound)
-          w(i,j,mom(2)) = max(w(i,j,mom(2)), -drhobound*dasound)
-        enddo
-      enddo
+      w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
+      w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
 
     !
     ! Right radial boundary is outflow for all quantities. In usr.par 'cont'
@@ -562,6 +555,9 @@ contains
     case default
       call mpistop("BC not specified")
     end select
+
+    ! Convert hydro vars back to conserved to let AMRVAC do computations
+    call mhd_to_conserved(ixI^L,ixI^L,w,x)
 
   end subroutine special_bound
 
