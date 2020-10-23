@@ -353,15 +353,17 @@ contains
 
     ! Subroutine arguments
     integer, intent(in)             :: ixI^L, ixO^L
-    double precision, intent(in)    :: x(ixI^S,1:ndim)
-    double precision, intent(inout) :: w(ixI^S,1:nw)
+    real(8), intent(in)    :: x(ixI^S,1:ndim)
+    real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
     real(8) :: rho, vr, sfac
     integer :: i, j          ! dummy indices for radial + theta grid
 
+    !==================================================================
     ! Make a non-magnetic CAK model to be used later in a magnetosphere
-    if (iprob==0) then
+    !==================================================================
+    if (iprob == 0) then
 
       ! Small offset (asound/vinf) to avoid starting at terminal wind speed
       sfac = 1.0d0 - 1.0d-3**(1.0d0/beta)
@@ -397,11 +399,12 @@ contains
       w(ixI^S,mag(3)) = 0.0d0
     endif
 
-    ! Make a magnetosphere: restart is happening, only magnetic field assigned
-    if (iprob==1) then
+    !==================================
+    ! Make a magnetosphere from restart
+    !==================================
+    if (iprob == 1) then
       !
-      ! Setup magnetic field based on vector potential (CT), or just regular
-      ! magnetic field components of dipole
+      ! Setup magnetic field based on Tanaka splitting or regular
       !
       if (B0field) then
         w(ixI^S,mag(:)) = 0.0d0
@@ -410,15 +413,15 @@ contains
         w(ixI^S,mag(1)) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
 
         ! Polar magnetic field
-        w(ixI^S,mag(2)) = 0.5d0*dbpole * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
+        w(ixI^S,mag(2)) = 0.5d0 * dbpole &
+                          * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
 
         ! Azimuthal magnetic field
         w(ixI^S,mag(3)) = 0.0d0
       endif
 
-      ! Stop if using Dedner+ (2002) divergence cleaning
-      if(mhd_glm) w(ixO^S,psi_)=0.d0
-      !if (mhd_glm) call mpistop('Dedner divergence cleaner leads somehow to negative pressures near poles')
+      ! If using Dedner+(2002) divergence cleaning
+      if(mhd_glm) w(ixO^S,psi_) = 0.0d0
 
     endif
 
@@ -462,7 +465,6 @@ contains
     ! Local variables
     real(8) :: vr(ixI^S), vpol(ixI^S)
     integer :: i, j      ! dummy indices for radial + theta grid
-    integer :: ixBs^L    ! Face indices cell
 
     vr(ixI^S) = w(ixI^S,mom(1))/w(ixI^S,rho_) ! velocity from momentum
     vpol(ixI^S) = w(ixI^S,mom(2))/w(ixI^S,rho_)
@@ -475,7 +477,7 @@ contains
 
       ! Radial velocity field (slope extrapolation in 1st ghost, then constant)
       do i = ixBmax1,ixBmin1,-1
-        if (i==ixBmax1) then
+        if (i == ixBmax1) then
           vr(i,:) = vr(i+1,:) - (vr(i+2,:) - vr(i+1,:)) &
                             * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
         else
@@ -491,15 +493,19 @@ contains
       ! Azimuthal velocity field
       w(ixB^S,mom(3)) = 0.0d0
 
+      !=======================
       ! Non-magnetic CAK model
-      if (iprob==0) then
+      !=======================
+      if (iprob == 0) then
         w(ixI^S,mag(1)) = 0.0d0
         w(ixI^S,mag(2)) = 0.0d0
         w(ixI^S,mag(3)) = 0.0d0
       endif
 
-      ! Restart from 2D spherically symmetric non-magnetic CAK model
-      if (iprob==1) then
+      !====================================
+      ! Restart from non-magnetic CAK model
+      !====================================
+      if (iprob == 1) then
 
         if (B0field) then
           w(ixB^S,mag(:)) = 0.0d0
@@ -528,7 +534,8 @@ contains
           w(ixB^S,mag(3)) = 0.0d0
         endif
 
-        if(mhd_glm) w(ixB^S,psi_)=0.d0
+        ! When using Dedner+(2002) divergence cleaning
+        if(mhd_glm) w(ixB^S,psi_) = 0.0d0
 
       endif
 
@@ -562,9 +569,7 @@ contains
 
   subroutine CAK_source(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
     !
-    ! This routine does computations in CGS for ease of interpretation
-    ! At start we translate from dimensionless AMRVAC to CGS and at the end the
-    ! reverse is being done such that AMRVAC itself keeps working dimensionless
+    ! Compute the analytical CAK line-force
     !
     use mod_global_parameters
 
@@ -579,7 +584,7 @@ contains
     real(8) :: forw(ixI^S), backw(ixI^S), cent(ixI^S)
     real(8) :: gcak(ixI^S), geff(ixI^S)
     real(8) :: vr(ixI^S), rho(ixI^S), xc(ixI^S)
-    real(8) :: beta_fd(ixI^S), fdfac(ixI^S), tdum(ixO^S)
+    real(8) :: beta_fd(ixI^S), fdfac(ixI^S), timedum(ixO^S)
     real(8) :: fac, fac1, fac2
     integer :: i, j, jx^L, hx^L
 
@@ -626,12 +631,12 @@ contains
     !                     / ((xc(i^%1ixO^S) - xc(hx^S)) * (xc(jx^S) - xc(i^%1ixO^S)))
 
     ! Central differenced dv/dr
-    if (iprob==0) then
+    if (iprob == 0) then
       ! In CAK this has to be >0, otherwise stagnant flow
       dvdr_cent(ixO^S) = abs(backw(ixO^S) + cent(ixO^S) + forw(ixO^S))
     endif
 
-    if (iprob==1) then
+    if (iprob == 1) then
       ! In magnetosphere, we actually require fallback
       dvdr_cent(ixO^S) = max(backw(ixO^S) + cent(ixO^S) + forw(ixO^S), 0.0d0)
     endif
@@ -693,8 +698,8 @@ contains
                       + qdt * (gcak(ixO^S) + geff(ixO^S))*wCT(ixO^S,rho_)
 
     ! Define a new time-step corrected for continuum and line-acceleration
-    tdum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
-    new_timestep = 0.3d0 * minval(abs(tdum(ixO^S)))**0.5d0
+    timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
+    new_timestep = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
 
   end subroutine CAK_source
 
@@ -747,15 +752,15 @@ contains
     use mod_global_parameters
 
     ! Subroutine arguments
-    integer, intent(in)             :: igrid,level,ixI^L,ixO^L
-    double precision, intent(in)    :: qt,x(ixI^S,1:ndim)
-    double precision, intent(inout) :: w(ixI^S,1:nw)
+    integer, intent(in)    :: igrid,level,ixI^L,ixO^L
+    real(8), intent(in)    :: qt,x(ixI^S,1:ndim)
+    real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
     logical :: first_time = .true.
     real(8) :: tnorm
 
-    if (global_time>=dtstat) then
+    if (global_time >= dtstat) then
       !
       ! Convert conservative variables to primitives (back conversion at end)
       ! This means that mom(X) below is now the velocity in direction X
@@ -918,9 +923,9 @@ contains
     use mod_global_parameters
 
     ! Subroutine arguments
-    integer, intent(in)           :: ixI^L,ixO^L
-    double precision, intent(in)  :: x(ixI^S,1:ndim)
-    double precision, intent(inout) :: wB0(ixI^S,1:ndir)
+    integer, intent(in)    :: ixI^L,ixO^L
+    real(8), intent(in)    :: x(ixI^S,1:ndim)
+    real(8), intent(inout) :: wB0(ixI^S,1:ndir)
 
     wB0(ixI^S,1) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
     wB0(ixI^S,2) = 0.5d0*dbpole * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
