@@ -415,7 +415,7 @@ contains
       endif
 
       ! If using Dedner+(2002) divergence cleaning
-      if(mhd_glm) w(ixO^S,psi_) = 0.0d0
+      if (mhd_glm) w(ixO^S,psi_) = 0.0d0
 
       !
       ! No need to convert here to conserved variables; the w-array in the
@@ -485,6 +485,13 @@ contains
 
       enddo
 
+      !
+      ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
+      ! Also avoid overloading too much, limit to negative sound speed momentum
+      !
+      w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
+      w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
+
       ! Polar velocity field
       w(ixB^S,mom(2)) = 0.0d0
 
@@ -533,16 +540,9 @@ contains
         endif
 
         ! When using Dedner+(2002) divergence cleaning
-        if(mhd_glm) w(ixB^S,psi_) = 0.0d0
+        if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
       endif
-
-      !
-      ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
-      ! Also avoid overloading too much, limit to negative sound speed momentum
-      !
-      w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
-      w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
 
     !
     ! Right radial boundary is outflow for all quantities. In usr.par 'cont'
@@ -575,25 +575,21 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
-    real(8) :: dvdr_up(ixI^S), dvdr_down(ixI^S), dvdr_cent(ixI^S)
-    real(8) :: forw(ixI^S), backw(ixI^S), cent(ixI^S)
+    real(8) :: dvdr_up(ixI^S), dvdr_down(ixI^S), dvdr_cent(ixI^S), dvdr(ixI^S)
     real(8) :: gcak(ixI^S), geff(ixI^S)
-    real(8) :: vr(ixI^S), rho(ixI^S), xc(ixI^S)
+    real(8) :: vr(ixI^S), rho(ixI^S)
     real(8) :: beta_fd(ixI^S), fdfac(ixI^S), timedum(ixO^S)
     real(8) :: fac, fac1, fac2
-    integer :: i, j, jx^L, hx^L
+    integer :: i, jx^L, hx^L
 
     !========================================================================
-    ! Convert from dimensionless to CGS
+    ! Convert to primitives
 
     ! Define the time-centred, radial velocity from the radial momentum
-    vr(ixI^S) = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_) * unit_velocity
+    vr(ixI^S) = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_)
 
     ! Time-centred density
-    rho(ixI^S) = wCT(ixI^S,rho_) * unit_density
-
-    ! Radial grid coordinate
-    xc(ixI^S) = x(ixI^S,1) * unit_length
+    rho(ixI^S) = wCT(ixI^S,rho_)
 
     !========================================================================
 
@@ -604,86 +600,72 @@ contains
     jx^L=ixO^L+kr(1,^D);
     hx^L=ixO^L-kr(1,^D);
 
-
-    ! NEW TEST
+    ! Get dv/dr on non-uniform grid according to Sundqvist & Veronis (1970)
     do i = ixOmin1,ixOmax1
-      forw(i,:) = (xc(i,:)-xc(i-1,:))*vr(i+1,:)/((xc(i+1,:)-xc(i,:)) * (xc(i+1,:)-xc(i-1,:)))
-      backw(i,:) = -(xc(i+1,:)-xc(i,:))*vr(i-1,:)/((xc(i,:)-xc(i-1,:)) * (xc(i+1,:)-xc(i-1,:)))
-      cent(i,:)=(xc(i+1,:)+xc(i-1,:)-2.0d0*xc(i,:))*vr(i,:)/((xc(i,:) - xc(i-1,:))*(xc(i+1,:) - xc(i,:)))
+      ! Forward difference
+      dvdr_up(i^%1ixO^S) = (x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * vr(i+1^%1ixO^S) &
+                          / ((x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i-1^%1ixO^S,1)))
+
+      ! Backward difference
+      dvdr_down(i^%1ixO^S) = -(x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)) * vr(i-1^%1ixO^S) &
+                          / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i-1^%1ixO^S,1)))
+
+      ! Central difference
+      dvdr_cent(i^%1ixO^S)  = (x(i+1^%1ixO^S,1) + x(i-1^%1ixO^S,1) - 2.0d0*x(i^%1ixO^S,1)) * vr(i^%1ixO^S) &
+                          / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)))
     enddo
 
-    ! Gradient for non-uniform grids according to Sundqvist & Veronis (1970)
-    ! forward difference
-    ! forw(i^%1ixO^S)  = (xc(i^%1ixO^S) - xc(hx^S)) * vr(jx^S) &
-    !                     / ((xc(jx^S) - xc(i^%1ixO^S)) * (xc(jx^S) - xc(hx^S)))
-    !
-    ! ! backward difference
-    ! backw(i^%1ixO^S) = -(xc(jx^S) - xc(i^%1ixO^S)) * vr(hx^S) &
-    !                     / ((xc(i^%1ixO^S) - xc(hx^S)) * (xc(jx^S) - xc(hx^S)))
-    !
-    ! ! central difference
-    ! cent(i^%1ixO^S)  = (xc(jx^S)+xc(hx^S)-2.0d0*xc(i^%1ixO^S)) * vr(i^%1ixO^S) &
-    !                     / ((xc(i^%1ixO^S) - xc(hx^S)) * (xc(jx^S) - xc(i^%1ixO^S)))
-
-    ! Central differenced dv/dr
+    !=================
+    ! Non-magnetic CAK
+    !=================
     if (iprob == 0) then
-      ! In CAK this has to be >0, otherwise stagnant flow
-      dvdr_cent(ixO^S) = abs(backw(ixO^S) + cent(ixO^S) + forw(ixO^S))
+      ! Total gradient (in CAK this has to be >0, otherwise stagnant flow)
+      dvdr(ixO^S) = abs(dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S))
     endif
 
+    !==============
+    ! Magnetosphere
+    !==============
     if (iprob == 1) then
-      ! In magnetosphere, we actually require fallback
-      dvdr_cent(ixO^S) = max(backw(ixO^S) + cent(ixO^S) + forw(ixO^S), 0.0d0)
+      ! Total gradient (in magnetosphere, we actually require fallback)
+      dvdr(ixO^S) = max(dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S), 0.0d0)
     endif
 
-    ! Finite disk factor parameterization (Owocki & Puls 1996)
-    beta_fd(ixO^S) = (1.0d0 - vr(ixO^S)/ (xc(ixO^S) * dvdr_cent(ixO^S))) &
+    ! Finite disk factor parameterisation (Owocki & Puls 1996)
+    beta_fd(ixO^S) = ( 1.0d0 - vr(ixO^S)/(x(ixO^S,1) * dvdr(ixO^S)) ) &
                       * (drstar/x(ixO^S,1))**2.0d0
 
     ! Check the finite disk array and determine finite disk factor
-    do j = ixOmin2,ixOmax2
-      do i = ixOmin1,ixOmax1
+    where (beta_fd >= 1.0d0)
+      fdfac = 1.0d0/(1.0d0 + alpha)
+    elsewhere (beta_fd < -1.0d10)
+      fdfac = abs(beta_fd)**alpha / (1.0d0 + alpha)
+    elsewhere (abs(beta_fd) > 1.0d-3)
+      fdfac = (1.0d0 - (1.0d0 - beta_fd)**(1.0d0 + alpha)) &
+                  / (beta_fd*(1.0d0 + alpha))
+    elsewhere
+      fdfac = 1.0d0 - 0.5d0*alpha*beta_fd &
+                      * (1.0d0 + 1.0d0/3.0d0 * (1.0d0 - alpha)*beta_fd)
+    end where
 
-        if (beta_fd(i,j) >= 1.0d0) then
-          fdfac(i,j) = 1.0d0/(1.0d0 + alpha)
-        else if (beta_fd(i,j) < -1.0d10) then
-          fdfac(i,j) = abs(beta_fd(i,j))**alpha / (1.0d0 + alpha)
-        else if (abs(beta_fd(i,j)) > 1.0d-3) then
-          fdfac(i,j) = (1.0d0 - (1.0d0 - beta_fd(i,j))**(1.0d0 + alpha)) &
-                        / (beta_fd(i,j)*(1.0d0 + alpha))
-        else
-          fdfac(i,j) = 1.0d0 - 0.5d0*alpha*beta_fd(i,j) &
-                        * (1.0d0 + 1.0d0/3.0d0 * (1.0d0 - alpha)*beta_fd(i,j))
-        end if
-
-        if (fdfac(i,j) < smalldouble) then
-          fdfac(i,j) = zero
-        else if (fdfac(i,j) > 5.d0) then
-          fdfac(i,j) = 1.0d0
-        endif
-
-      enddo
-    enddo
+    where (fdfac < smalldouble)
+      fdfac = 0.0d0
+    elsewhere (fdfac > 5.0d0)
+      fdfac = 1.0d0
+    end where
 
     ! Calculate CAK line-force
-    fac1 = 1.0d0/(1.0d0 - alpha) * kappae * lstar*Qbar/(4.0d0*dpi * const_c)
-    fac2 = 1.0d0/(const_c * Qbar * kappae)**alpha
-    fac = fac1 * fac2
+    fac1 = 1.0d0/(1.0d0 - alpha) * dkappae * dlstar*Qbar/(4.0d0*dpi * dclight)
+    fac2 = 1.0d0/(dclight * Qbar * dkappae)**alpha
+    fac  = fac1 * fac2
 
-    gcak(ixO^S) = fac/xc(ixO^S)**2.0d0 * (dvdr_cent(ixO^S)/rho(ixO^S))**alpha
+    gcak(ixO^S) = fac/x(ixO^S,1)**2.0d0 * (dvdr(ixO^S)/rho(ixO^S))**alpha
 
     ! Correct for finite extend stellar disk
     gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S)
 
-    ! Fill up the empty CAK array variable
+    ! Fill the empty CAK array variable
     w(ixO^S,my_gcak) = gcak(ixO^S)
-
-    !========================================================================
-    ! Line-force computed and saved in CGS, now return to dimensionless form
-    !
-    gcak(ixO^S) = gcak(ixO^S) * unit_time**2.0d0 / unit_length
-
-    !========================================================================
 
     ! Effective gravity computation
     geff(ixO^S) = - dGgrav * dmstar * (1.0d0 - dgammae)/x(ixO^S,1)**2.0d0
@@ -694,7 +676,7 @@ contains
 
     ! Define a new time-step corrected for continuum and line-acceleration
     timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
-    new_timestep = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
+    new_timestep   = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
 
   end subroutine CAK_source
 
@@ -772,7 +754,7 @@ contains
         w(ixO^S,my_tmp7) = w(ixO^S,mom(2))
         w(ixO^S,my_tmp8) = w(ixO^S,mom(2))**2.0d0
         w(ixO^S,my_tmp9) = w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(2))
-        first_time  = .false.
+        first_time = .false.
       else
         ! Time weight
         tnorm = global_time - dtstat
