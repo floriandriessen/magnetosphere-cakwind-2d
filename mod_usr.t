@@ -55,6 +55,10 @@
 !   > removed Constrained Transport implementation, extensive testing has shown
 !     that unphysical results and are unreliable (for this application here)
 !
+! (October 2020) -- Flo
+!   > added rigid body rotation to study centrifugal magnetospheres, set in
+!     .par file with dimensionless 'Wrot' parameter (ud-Doula et al. 2006)
+!
 !===============================================================================
 
 module mod_usr
@@ -68,8 +72,8 @@ module mod_usr
   real(8) :: msun=1.989d33, lsun=3.827d33, rsun=6.96d10, Ggrav=6.67d-8
 
   ! Stellar parameters: luminosity, mass, radius, polar magnetic field,
-  !                     surface density, eff. temp., Alfven radius
-  real(8) :: lstar, mstar, rstar, bpole, rhobound, twind, ralf
+  !                     surface density, eff. temp., Alfven + Kepler radius
+  real(8) :: lstar, mstar, rstar, bpole, rhobound, twind, ralf, rkep
 
   ! Unit quantities that are handy: gravitational constant, luminosity, mass
   real(8) :: my_unit_ggrav, my_unit_lum, my_unit_mass
@@ -82,8 +86,9 @@ module mod_usr
   !                  beta power velocity law, Eddington gamma, escape speed,
   !                  CAK + fd mass-loss rate, terminal wind speed, sound speed
   !                  equatorial magnetic field, wind magnetic confinement
+  !                  W-parameter, equatorial rotation + critical rotation speed
   real(8) :: alpha, Qbar, Qmax, kappae, beta, gammae, vesc, mdot, mdotfd, &
-             vinf, asound, etastar
+             vinf, asound, etastar, Wrot, vrot, vrotc
 
   ! Time-step accounting radiation force, time to start statistical computation
   real(8) :: new_timestep, tstat
@@ -91,7 +96,7 @@ module mod_usr
   ! Dimensionless variables of relevant variables above
   real(8) :: dlstar, dmstar, drstar, dbpole, drhobound, dtwind, dkappae, &
              dvesc, dvinf, dmdot, dasound, dclight, dGgrav, dgammae, detaconf, &
-             dtstat
+             dtstat, dvrot
 
   ! Additional names for wind variables
   integer :: my_gcak
@@ -200,7 +205,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, bpole, rhobound, alpha, &
-                          Qbar, Qmax, kappae, beta, tstat
+                          Qbar, Qmax, kappae, beta, tstat, Wrot
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -213,10 +218,6 @@ contains
     mstar = mstar * msun
     rstar = rstar * rsun
 
-    if (typedivbfix == 'ct') then
-      call mpistop('CT disabled. Gives strange results for this problem.')
-    endif
-
   end subroutine usr_params_read
 
 !===============================================================================
@@ -228,6 +229,10 @@ contains
     use mod_global_parameters
     use mod_constants
 
+    if (typedivbfix == 'ct') then
+      call mpistop('CT disabled. Gives strange results for this problem.')
+    endif
+
     ! Stellar structure
     gammae = kappae * lstar/(4.d0*dpi * Ggrav * mstar * const_c)
     logg   = log10(Ggrav * mstar/rstar**2.0d0)
@@ -235,6 +240,8 @@ contains
     mumol  = (1.0d0 + 4.0d0*He_abundance)/(2.0d0 + 3.0d0*He_abundance)
     asound = dsqrt(twind * kB_cgs/(mumol * mp_cgs))
     heff   = asound**2.0d0 / 10.0d0**logge
+    vrotc  = dsqrt(Ggrav * mstar*(1.0d0 - gammae)/rstar)
+    vrot   = vrotc * Wrot
 
     ! Wind quantities in CAK theory
     Qmax    = Qmax * Qbar
@@ -245,6 +252,7 @@ contains
     mdotfd  = mdot/(1.0d0 + alpha)**(1.0d0/alpha)
     etastar = ((bpole/2.0d0)**2.0d0 * rstar**2.0d0)/(mdot * vinf)
     ralf    = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
+    rkep    = Wrot**(-2.0d0/3.0d0)
 
     ! Make all relevant variables dimensionless
     call make_dimless_vars()
@@ -280,7 +288,7 @@ contains
       if (iprob == 0) then
         write(94,*) '> Making a CAK wind to be put in a magnetosphere model'
       elseif (iprob == 1) then
-        write(94,*) '> Making a magnetosphere model with cleaner:', typedivbfix
+        write(94,*) '> Making a magnetosphere model with cleaner: ', typedivbfix
       else
         call mpistop('Choose a valid iprob {0,1}')
       endif
@@ -295,6 +303,10 @@ contains
       if (iprob == 1) write(94,*) 'Polar magnetic field   = ', bpole
       if (iprob == 1) write(94,*) 'Wind confinement eta   = ', etastar
       if (iprob == 1) write(94,*) 'Ralf/Rstar             = ', ralf
+      if (iprob == 1) write(94,*) 'Rkep/Rstar             = ', rkep
+      if (iprob == 1) write(94,*) 'W (vrot/vrotc)         = ', Wrot
+      if (iprob == 1) write(94,*) 'critical vrot          = ', vrotc
+      if (iprob == 1) write(94,*) 'vrot                   = ', vrot
       write(94,*) 'Mean molecular weight  = ', mumol
       write(94,*) 'log(g)                 = ', logg
       write(94,*) 'eff. log(g)            = ', logge
@@ -337,6 +349,7 @@ contains
       write(94,*) 'asound       = ', dasound
       write(94,*) 'eff. vesc    = ', dvesc
       write(94,*) 'vinf         = ', dvinf
+      if (iprob == 1) write(94,*) 'vrot         = ', dvrot
       write(94,*) 'clight       = ', dclight
       write(94,*) 'Ggrav        = ', dGgrav
       write(94,*) 'Tstat        = ', dtstat
@@ -399,6 +412,12 @@ contains
     !============================
     if (iprob == 1) then
 
+      ! Convert hydro vars to primitive
+      call mhd_to_primitive(ixI^L,ixO^L,w,x)
+
+      ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
+      w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
+
       ! Setup magnetic field based on Tanaka splitting or regular
       if (B0field) then
         w(ixI^S,mag(:)) = 0.0d0
@@ -417,11 +436,9 @@ contains
       ! If using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixO^S,psi_) = 0.0d0
 
-      !
-      ! No need to convert here to conserved variables; the w-array in the
-      ! restart file is by default in conserved variables and the Bfield here
-      ! does not need any conversion primitive-conserved
-      !
+      ! Convert hydro vars to conserved to let AMRVAC do computations
+      call mhd_to_conserved(ixI^L,ixO^L,w,x)
+
     endif
 
     ! Initialize the CAK line-force and statistical quantities
@@ -495,22 +512,26 @@ contains
       ! Polar velocity field
       w(ixB^S,mom(2)) = 0.0d0
 
-      ! Azimuthal velocity field
-      w(ixB^S,mom(3)) = 0.0d0
-
       !=======================
       ! Non-magnetic CAK model
       !=======================
       if (iprob == 0) then
-        w(ixI^S,mag(1)) = 0.0d0
-        w(ixI^S,mag(2)) = 0.0d0
-        w(ixI^S,mag(3)) = 0.0d0
+        ! Azimuthal velocity field
+        w(ixB^S,mom(3)) = 0.0d0
+
+        ! No magnetic field
+        w(ixB^S,mag(1)) = 0.0d0
+        w(ixB^S,mag(2)) = 0.0d0
+        w(ixB^S,mag(3)) = 0.0d0
       endif
 
       !====================
       ! Magnetosphere model
       !====================
       if (iprob == 1) then
+
+        ! Azimuthal velocity field
+        w(ixB^S,mom(3)) = dvrot * dsin(x(ixB^S,2))
 
         if (B0field) then
           w(ixB^S,mag(:)) = 0.0d0
@@ -842,6 +863,7 @@ contains
     dgammae   = dkappae * dlstar/(4.d0*dpi * dGgrav * dmstar * dclight)
     detaconf  = ((dbpole/2.0d0)**2.0d0 * drstar**2.0d0)/(dmdot * dvinf)
     dtstat    = tstat/unit_time
+    dvrot     = vrot/unit_velocity
 
   end subroutine make_dimless_vars
 
