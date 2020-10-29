@@ -58,6 +58,8 @@
 ! (October 2020) -- Flo
 !   > added rigid body rotation to study centrifugal magnetospheres, set in
 !     .par file with dimensionless 'Wrot' parameter (ud-Doula et al. 2006)
+!   > included option with parameter 'imag' to select setup in terms of field
+!     strength (imag>0) or wind confinement (imag<0)
 !
 !===============================================================================
 
@@ -71,9 +73,15 @@ module mod_usr
   ! The usual suspects
   real(8) :: msun=1.989d33, lsun=3.827d33, rsun=6.96d10, Ggrav=6.67d-8
 
-  ! Stellar parameters: luminosity, mass, radius, polar magnetic field,
-  !                     surface density, eff. temp., Alfven + Kepler radius
-  real(8) :: lstar, mstar, rstar, bpole, rhobound, twind, ralf, rkep
+  ! Stellar parameters: luminosity, mass, radius, surface density, eff. temp.,
+  !                     polar magnetic field, wind magnetic confinement
+  !                     parameter, Alfven + Kepler radius, W-parameter,
+  !                     equatorial rotation + critical rotation speed
+  real(8) :: lstar, mstar, rstar, rhobound, twind, bpole, etastar, ralf, rkep, &
+             Wrot, vrot, vrotc
+
+  ! To select setup based on given bpole or etastar value
+  real(8) :: imag
 
   ! Unit quantities that are handy: gravitational constant, luminosity, mass
   real(8) :: my_unit_ggrav, my_unit_lum, my_unit_mass
@@ -85,10 +93,8 @@ module mod_usr
   ! Wind parameters: CAK alpha, Gayley Qbar + Qmax, opacity electron scattering,
   !                  beta power velocity law, Eddington gamma, escape speed,
   !                  CAK + fd mass-loss rate, terminal wind speed, sound speed
-  !                  equatorial magnetic field, wind magnetic confinement
-  !                  W-parameter, equatorial rotation + critical rotation speed
   real(8) :: alpha, Qbar, Qmax, kappae, beta, gammae, vesc, mdot, mdotfd, &
-             vinf, asound, etastar, Wrot, vrot, vrotc
+             vinf, asound
 
   ! Time-step accounting radiation force, time to start statistical computation
   real(8) :: new_timestep, tstat
@@ -204,7 +210,7 @@ contains
     ! Local variable
     integer :: n
 
-    namelist /star_list/ mstar, lstar, rstar, twind, bpole, rhobound, alpha, &
+    namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
                           Qbar, Qmax, kappae, beta, tstat, Wrot
 
     do n = 1,size(files)
@@ -250,7 +256,17 @@ contains
     mdot    = lstar/const_c**2.0d0 * alpha/(1.0d0 - alpha) &
                * (Qbar * gammae/(1.0d0 - gammae))**((1.0d0 - alpha)/alpha)
     mdotfd  = mdot/(1.0d0 + alpha)**(1.0d0/alpha)
-    etastar = ((bpole/2.0d0)**2.0d0 * rstar**2.0d0)/(mdot * vinf)
+
+    ! Bpole given and etastar computed or vice versa
+    if (imag > 0.0d0) then
+      bpole   = imag
+      etastar = ((bpole/2.0d0)**2.0d0 * rstar**2.0d0)/(mdot * vinf)
+    else
+      etastar = -imag
+      bpole   = 2.0d0 * (mdot * vinf * etastar / rstar**2.0d0)**0.5d0
+    endif
+
+    ! Compute Alfven and Kepler radius
     ralf    = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
     rkep    = Wrot**(-2.0d0/3.0d0)
 
@@ -649,7 +665,8 @@ contains
     !==============
     if (iprob == 1) then
       ! Total gradient (in magnetosphere, we actually require fallback)
-      dvdr(ixO^S) = max(dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S), 0.0d0)
+      dvdr(ixO^S) = max(dvdr_down(ixO^S) + dvdr_cent(ixO^S) &
+                                         + dvdr_up(ixO^S), 0.0d0)
     endif
 
     ! Finite disk factor parameterisation (Owocki & Puls 1996)
@@ -775,7 +792,7 @@ contains
         w(ixO^S,my_tmp7) = w(ixO^S,mom(2))
         w(ixO^S,my_tmp8) = w(ixO^S,mom(2))**2.0d0
         w(ixO^S,my_tmp9) = w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(2))
-        first_time = .false.
+        first_time       = .false.
       else
         ! Time weight
         tnorm = global_time - dtstat
