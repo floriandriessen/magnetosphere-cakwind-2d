@@ -1,6 +1,6 @@
 
 # 2D CAK Wind-Magnetosphere interaction
-Make MHD model of the radiation-driven wind of a magnetic O-star interacting with its magnetosphere using MPI-AMRVAC. Stellar wind is spherically symmetric and according to CAK theory including finite-disk correction. In the current setup an isothermal MHD flow is assumed.
+Make MHD model of the radiation-driven wind of a magnetic O-star interacting with its magnetosphere using MPI-AMRVAC. The magnetosphere can be dynamical or centrifugal. The stellar wind is spherically symmetric and according to CAK theory including finite-disk correction. In the current setup an isothermal MHD flow is assumed.
 
 ## Setup 
 
@@ -13,7 +13,9 @@ and do a make (if the AMRVAC source was not compiled yet, this will be done now 
 $ make -j
 ```
 
-## Setup options
+## Setup
+
+### Performing a simulation
 
 Simulations can be run using included .par files. The usual procedure to do a simulation is as follows
 
@@ -22,7 +24,16 @@ Simulations can be run using included .par files. The usual procedure to do a si
 
 Step 1 creates a 2D spherically symmetric, finite-disk, CAK wind. So far only relaxed CAK models of Zeta Puppis exist, but this can be easily changed to another star. Notice that only CAK models made here can be directly used for a magnetosphere and the MHD equations are solved (the magnetic field is set to zero). This is because AMRVAC stores the physics option in the .dat file and between restarts this has to be compatible.
 
-Step 2 can be done using standard MHD techniques (**usr_magnetosphere.par**) or using Tanaka's magnetic field splitting technique (**usr_magnetosphere_tanaka.par**). Tanaka's method is particularly recommended for highly magnetic flows (magnetic confinement > 1). Whenever magnetic confinement < 1 the Tanaka method is disabled (see Issues below). To do step 2 a restart is required from a corresponding relaxed CAK wind model. This is specified in the .par file (make sure it points to the correct file). Also ensure that the mesh settings are exactly the same as used in the CAK model.
+Step 2 can be done using standard MHD techniques (**usr_magnetosphere.par**) or using Tanaka's magnetic field splitting technique (**usr_magnetosphere_tanaka.par**). Tanaka's method is particularly recommended for highly magnetic flows (magnetic confinement > 1). To do step 2 a restart is required from a corresponding relaxed CAK wind model. This is specified in the .par file (make sure it points to the correct file). Also ensure that the mesh settings are exactly the same as used in the CAK model.
+
+### Magnetosphere type
+
+Both Dynamical (DM) and Centrifugal Magnetosphere (CM) simulations can be done. The difference is essentially set by the relative positions of Alfven and Kepler radius. A DM has R_alf < R_kep while the CM has R_kep < R_alf.
+
+To make a DM only the polar magnetic field strength or eta parameter have to be set. In the published works on DMs the rotation is set to zero. However, as suggested by Asif adding a little rotation can be quite beneficial if studying a DM with a strong confinement. Essentially this makes the little mass outflow in the magnetic equatorial plane more stable. There is no rule of thumb for choosing the rotation rate, but several km/s is fine.
+
+To make a CM the star should be rotating fast and have a strong magnetic confinement. This is the easiest way to enforce the CM condition. A rotation rate of half critical rotation is a good setup. Going above *Wrot = 0.75d0* is not recommended as the oblateness of the star should then be properly taken into account, which is currently not implemented.
+ 
 
 ## Extending a simulation
 
@@ -69,4 +80,3 @@ Tested with AMRVAC version 2.3 (Fall 2019).
 
 + using Constrained Transport for divergence B leads to strange blob developments in simulations (CT implementation excluded for now).
 + using a user specified AMR region (e.g. to resolve the magnetic equatorial plane) leads to streaks at the boundary of the refined and non-refined grid.
-+ For low magnetic confinement (etastar < 1) the Tanaka field splitting technique is not recommended due to the formation of 'antennae' in magnetic equatorial plane. This is strange because the original paper claims that the method can be used for any plasma beta flow (~ 1/etastar).
