@@ -61,10 +61,6 @@
 !   > included option with parameter 'imag' to select setup in terms of field
 !     strength (imag>0) or wind confinement (imag<0)
 !
-! (November 2020) -- Flo
-!   > stop condition to not use Tanaka splitting with no confinement as a
-!     current sheet tends to develop (not the case for non-split Bfield solver)
-!
 !===============================================================================
 
 module mod_usr
@@ -375,10 +371,6 @@ contains
 
     if (typedivbfix == 'ct') then
       call mpistop('CT disabled. Gives strange results for this problem.')
-    endif
-
-    if ((etastar <= 1.0d0) .and. B0field) then
-      call mpistop('For no confinement Tanaka field splitting disabled')
     endif
 
   end subroutine initglobaldata_usr
