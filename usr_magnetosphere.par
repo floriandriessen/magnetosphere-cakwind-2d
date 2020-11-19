@@ -1,16 +1,16 @@
 !=================================================
-! Project : 2D magnetic CAK wind
+! Project : 2D isothermal, magnetic CAK wind
 !
 ! Aim     : start from a relaxed 2D CAK model to
 !           study wind-magnetosphere interaction
 !           > make sure restart_from_file points
-!             to correct file
-!			
+!             to correct file 
+!
 ! Config  : setup.pl -d=2
 !=================================================
 
 &filelist
-  base_filename     = 'test/ms'
+  base_filename     = 'dm-280x120_etas1_wrot0/ms'
   restart_from_file = 'relaxedCAKmodels/zeta_puppis_280x120_rs7/cak0100.dat'
   firstprocess      = .true.
   saveprim          = .true.
@@ -25,7 +25,7 @@
   itsave(1,1) = 1       ! save on first time step log output
   itsave(1,2) = 1       ! save on first time step normal output
   ditsave_log = 1000	! save every xxx iterations to the log file
-  dtsave_dat  = 1.0d-2	! save stuff after each xxx unit time
+  dtsave_dat  = 1.0d-2	! save dat file after each xxx unit time
 /
 
 &stoplist
@@ -73,7 +73,6 @@
   mhd_energy  = .false.
   mhd_gamma   = 1.0d0
   typedivbfix = 'powel'	
-  B0field     = .true.
 /
 
 &star_list
@@ -81,7 +80,7 @@
   mstar    = 50.0d0
   rstar    = 20.0d0
   twind    = 4.0d4
-  imag     = 100.0d0     ! if imag>0: bpole = imag, if imag<0: etastar = -imag
+  imag     = -1.0d0     ! if imag>0: bpole = imag, if imag<0: etastar = -imag
   rhobound = 1.2d-11
   alpha    = 0.65d0
   Qbar     = 2000.0d0

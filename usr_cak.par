@@ -1,22 +1,20 @@
 !=================================================
-! Project : 2D magnetic CAK wind
+! Project : 1D sph. symm. isothermal, finite-disk
+!           CAK wind on a 2D grid
 !
-! Aim     : start from a relaxed 2D CAK model to
-!           study wind-magnetosphere interaction
-!           > make sure restart_from_file points
-!             to correct file
-!			
+! Aim     : create starting state for MHD, due to
+!           AMRVAC restart procedure (grid) the 
+!           divergence cleaner has to be set
+!           for non-magnetic wind
+!
 ! Config  : setup.pl -d=2
 !=================================================
 
 &filelist
-  base_filename     = 'test/ms'
-  restart_from_file = 'relaxedCAKmodels/zeta_puppis_280x120_rs7/cak0100.dat'
-  firstprocess      = .true.
-  saveprim          = .true.
-  autoconvert       = .true.
-  nwauxio           = 2 
-  convert_type      = 'vtuBCCmpi'
+  base_filename = 'zeta_puppis_304x96_rs25/cak'
+  saveprim      = .true.
+  autoconvert   = .true.
+  convert_type  = 'vtuBCCmpi'
 /
 
 &savelist
@@ -29,17 +27,14 @@
 /
 
 &stoplist
-  dtmin      = 1.d-20
-  time_max   = 0.5d0
-  reset_it   = .true.
-  reset_time = .true.
-  time_init  = 0
+  dtmin    = 1.0d-20
+  time_max = 2.0d0
 /
 
 &methodlist
   time_integrator = 'twostep'
-  flux_scheme     = 'hll'
-  limiter         = 'minmod'
+  flux_scheme     = 'tvdlf'
+  limiter         = 'vanleer'
 /
 
 &boundlist
@@ -51,29 +46,30 @@
 /
 
 &meshlist
-  iprob                 = 1
-  domain_nx1            = 280 
-  domain_nx2            = 120
-  block_nx1             = 70 
-  block_nx2             = 30 
+  iprob                 = 0
+  domain_nx1            = 304 
+  domain_nx2            = 96 
+  block_nx1             = 76 
+  block_nx2             = 24 
   xprobmin1             = 1.0d0 
-  xprobmax1             = 7.0d0 
+  xprobmax1             = 25.0d0 
   xprobmin2             = 0.0d0
   xprobmax2             = 0.5d0
   stretch_dim(1)        = 'uni'
   qstretch_baselevel(1) = 1.02
+  !stretch_dim(2)        = 'symm'
+  !qstretch_baselevel(2) = 1.03
+  !nstretchedblocks_baselevel(2) = 4 ! blocks that stretch w.r.t. middle grid
 /
 
 &paramlist
   courantpar = 0.3d0 
-  slowsteps  = 50
 /
 
 &mhd_list
   mhd_energy  = .false.
-  mhd_gamma   = 1.0d0
-  typedivbfix = 'powel'	
-  B0field     = .true.
+  mhd_gamma   = 1.d0
+  typedivbfix = 'powel'
 /
 
 &star_list
@@ -81,13 +77,13 @@
   mstar    = 50.0d0
   rstar    = 20.0d0
   twind    = 4.0d4
-  imag     = 100.0d0     ! if imag>0: bpole = imag, if imag<0: etastar = -imag
+  imag     = 0.0d0
   rhobound = 1.2d-11
   alpha    = 0.65d0
   Qbar     = 2000.0d0
   Qmax     = 0.00395d0
   kappae   = 0.34d0
   beta     = 0.8d0
-  tstat    = 2.0d5
-  Wrot     = 0.0d0
+  tstat    = 3.0d5
+  Wrot     = 0.0d0     
 /
