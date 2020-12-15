@@ -61,6 +61,9 @@
 !   > included option with parameter 'imag' to select setup in terms of field
 !     strength (imag>0) or wind confinement (imag<0)
 !
+! (December 2020) -- Flo
+!   > removed rho2vrad_av and rho2vpol_av variables from statistics
+!
 !===============================================================================
 
 module mod_usr
@@ -108,10 +111,9 @@ module mod_usr
   integer :: my_gcak
 
   ! Additional names for statistical wind variables
-  integer :: my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav, my_rho2vrav,&
-             my_vpolav, my_vpol2av, my_rho2vpolav
-  integer :: my_tmp1, my_tmp2, my_tmp3, my_tmp4, my_tmp5,my_tmp6, my_tmp7, &
-             my_tmp8, my_tmp9
+  integer :: my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav, my_vpolav, &
+             my_vpol2av
+  integer :: my_tmp1, my_tmp2, my_tmp3, my_tmp4, my_tmp5,my_tmp6, my_tmp7
 
   character(len=8)  :: todayis
   character(len=99) :: inputlog
@@ -173,16 +175,14 @@ contains
     my_gcak = var_set_extravar("gcak", "gcak")
 
     ! Statistical quantities and temporary storage variables
-    my_rhoav      = var_set_extravar("rho_av", "rho_av")
-    my_rho2av     = var_set_extravar("rho2_av", "rho2_av")
-    my_vrav       = var_set_extravar("vrad_av", "vrad_av")
-    my_vpolav     = var_set_extravar("vtheta_av", "vtheta_av")
-    my_vr2av      = var_set_extravar("vrad2_av", "vrad2_av")
-    my_vpol2av    = var_set_extravar("vtheta2_av", "vtheta2_av")
-    my_rhovrav    = var_set_extravar("rho_vrad_av", "rho_vrad_av")
-    my_rho2vrav   = var_set_extravar("rho2_vrad_av", "rho2_vrad_av")
-    my_rho2vpolav = var_set_extravar("rho2_vtheta_av", "rho2_vtheta_av")
-
+    my_rhoav   = var_set_extravar("rho_av", "rho_av")
+    my_rho2av  = var_set_extravar("rho2_av", "rho2_av")
+    my_vrav    = var_set_extravar("vrad_av", "vrad_av")
+    my_vpolav  = var_set_extravar("vtheta_av", "vtheta_av")
+    my_vr2av   = var_set_extravar("vrad2_av", "vrad2_av")
+    my_vpol2av = var_set_extravar("vtheta2_av", "vtheta2_av")
+    my_rhovrav = var_set_extravar("rho_vrad_av", "rho_vrad_av")
+    
     my_tmp1 = var_set_extravar("tmp1","tmp1")
     my_tmp2 = var_set_extravar("tmp2","tmp2")
     my_tmp3 = var_set_extravar("tmp3","tmp3")
@@ -190,8 +190,6 @@ contains
     my_tmp5 = var_set_extravar("tmp5","tmp5")
     my_tmp6 = var_set_extravar("tmp6","tmp6")
     my_tmp7 = var_set_extravar("tmp7","tmp7")
-    my_tmp8 = var_set_extravar("tmp8","tmp8")
-    my_tmp9 = var_set_extravar("tmp9","tmp9")
 
   end subroutine usr_init
 
@@ -263,8 +261,8 @@ contains
     endif
 
     ! Compute Alfven and Kepler radius
-    ralf    = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
-    rkep    = Wrot**(-2.0d0/3.0d0)
+    ralf = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
+    rkep = Wrot**(-2.0d0/3.0d0)
 
     ! Make all relevant variables dimensionless
     call make_dimless_vars()
@@ -466,8 +464,6 @@ contains
     w(ixO^S,my_vpolav)     = 0.0d0
     w(ixO^S,my_vpol2av)    = 0.0d0
     w(ixO^S,my_rhovrav)    = 0.0d0
-    w(ixO^S,my_rho2vrav)   = 0.0d0
-    w(ixO^S,my_rho2vpolav) = 0.0d0
 
     w(ixO^S,my_tmp1) = 0.0d0
     w(ixO^S,my_tmp2) = 0.0d0
@@ -476,8 +472,6 @@ contains
     w(ixO^S,my_tmp4) = 0.0d0
     w(ixO^S,my_tmp5) = 0.0d0
     w(ixO^S,my_tmp7) = 0.0d0
-    w(ixO^S,my_tmp8) = 0.0d0
-    w(ixO^S,my_tmp9) = 0.0d0
 
   end subroutine initial_conditions
 
@@ -788,10 +782,8 @@ contains
         w(ixO^S,my_tmp3) = w(ixO^S,mom(1))
         w(ixO^S,my_tmp4) = w(ixO^S,mom(1))**2.0d0
         w(ixO^S,my_tmp5) = w(ixO^S,rho_) * w(ixO^S,mom(1))
-        w(ixO^S,my_tmp6) = w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(1))
-        w(ixO^S,my_tmp7) = w(ixO^S,mom(2))
-        w(ixO^S,my_tmp8) = w(ixO^S,mom(2))**2.0d0
-        w(ixO^S,my_tmp9) = w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(2))
+        w(ixO^S,my_tmp6) = w(ixO^S,mom(2))
+        w(ixO^S,my_tmp7) = w(ixO^S,mom(2))**2.0d0
         first_time       = .false.
       else
         ! Time weight
@@ -822,25 +814,15 @@ contains
                              + 0.5*(w(ixO^S,rho_) * w(ixO^S,mom(1)) + w(ixO^S,my_tmp5))*dt)/tnorm
         w(ixO^S,my_tmp5) = w(ixO^S,rho_) * w(ixO^S,mom(1))
 
-        ! Average weighted clump radial velocity
-        w(ixO^S,my_rho2vrav) = (w(ixO^S,my_rho2vrav)*(tnorm-dt) &
-                              + 0.5*(w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(1)) + w(ixO^S,my_tmp6))*dt)/tnorm
-        w(ixO^S,my_tmp6) = w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(1))
-
         ! Average polar velocity
         w(ixO^S,my_vpolav) = (w(ixO^S,my_vpolav)*(tnorm-dt) &
-                           + 0.5*(w(ixO^S,mom(2)) + w(ixO^S,my_tmp7))*dt)/tnorm
-        w(ixO^S,my_tmp7) = w(ixO^S,mom(2))
+                           + 0.5*(w(ixO^S,mom(2)) + w(ixO^S,my_tmp6))*dt)/tnorm
+        w(ixO^S,my_tmp6) = w(ixO^S,mom(2))
 
         ! Average polar velocity squared
         w(ixO^S,my_vpol2av)  = (w(ixO^S,my_vpol2av)*(tnorm-dt) &
-                              + 0.5*(w(ixO^S,mom(2))**2.0d0 + w(ixO^S,my_tmp8))*dt)/tnorm
-        w(ixO^S,my_tmp8) = w(ixO^S,mom(2))**2.0d0
-
-        ! Average weighted clump polar velocity
-        w(ixO^S,my_rho2vpolav) = (w(ixO^S,my_rho2vpolav)*(tnorm-dt) &
-                                + 0.5*(w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(2)) + w(ixO^S,my_tmp9))*dt)/tnorm
-        w(ixO^S,my_tmp9) = w(ixO^S,rho_)**2.0d0 * w(ixO^S,mom(2))
+                              + 0.5*(w(ixO^S,mom(2))**2.0d0 + w(ixO^S,my_tmp7))*dt)/tnorm
+        w(ixO^S,my_tmp7) = w(ixO^S,mom(2))**2.0d0
 
       endif
 
