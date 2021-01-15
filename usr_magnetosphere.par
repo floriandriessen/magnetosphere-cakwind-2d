@@ -10,13 +10,14 @@
 !=================================================
 
 &filelist
-  base_filename     = 'dm-280x120_etas1_wrot0/ms'
+  base_filename     = 'test/ms'
   restart_from_file = 'relaxedCAKmodels/zeta_puppis_280x120_rs7/cak0100.dat'
   firstprocess      = .true.
   saveprim          = .true.
   autoconvert       = .true.
   nwauxio           = 2 
   convert_type      = 'vtuBCCmpi'
+  w_write(16:22)    = 7*.false. ! not save statistics tmp variables in output
 /
 
 &savelist
@@ -72,7 +73,8 @@
 &mhd_list
   mhd_energy  = .false.
   mhd_gamma   = 1.0d0
-  typedivbfix = 'powel'	
+  typedivbfix = 'glm'
+  B0field     = .false.	
 /
 
 &star_list

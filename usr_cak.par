@@ -11,10 +11,11 @@
 !=================================================
 
 &filelist
-  base_filename = 'zeta_puppis_304x96_rs25/cak'
-  saveprim      = .true.
-  autoconvert   = .true.
-  convert_type  = 'vtuBCCmpi'
+  base_filename  = 'teststat/cak'
+  saveprim       = .true.
+  autoconvert    = .true.
+  convert_type   = 'vtuBCCmpi'
+  w_write(16:22) = 7*.false. ! not save statistics tmp variables in output
 /
 
 &savelist
@@ -28,7 +29,7 @@
 
 &stoplist
   dtmin    = 1.0d-20
-  time_max = 2.0d0
+  time_max = 0.6d0
 /
 
 &methodlist
@@ -47,12 +48,12 @@
 
 &meshlist
   iprob                 = 0
-  domain_nx1            = 304 
-  domain_nx2            = 96 
-  block_nx1             = 76 
-  block_nx2             = 24 
+  domain_nx1            = 280 
+  domain_nx2            = 120 
+  block_nx1             = 70 
+  block_nx2             = 30 
   xprobmin1             = 1.0d0 
-  xprobmax1             = 25.0d0 
+  xprobmax1             = 7.0d0 
   xprobmin2             = 0.0d0
   xprobmax2             = 0.5d0
   stretch_dim(1)        = 'uni'
