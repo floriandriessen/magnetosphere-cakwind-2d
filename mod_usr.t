@@ -182,7 +182,7 @@ contains
     my_vr2av   = var_set_extravar("vrad2_av", "vrad2_av")
     my_vpol2av = var_set_extravar("vtheta2_av", "vtheta2_av")
     my_rhovrav = var_set_extravar("rho_vrad_av", "rho_vrad_av")
-    
+
     my_tmp1 = var_set_extravar("tmp1","tmp1")
     my_tmp2 = var_set_extravar("tmp2","tmp2")
     my_tmp3 = var_set_extravar("tmp3","tmp3")
@@ -491,12 +491,12 @@ contains
     ! Local variable
     integer :: i
 
-    ! Convert hydro vars to primitive
-    call mhd_to_primitive(ixI^L,ixI^L,w,x)
-
     select case (iB)
 
     case(1) ! Left boundary (stellar surface)
+
+      ! Convert hydro vars to primitive
+      call mhd_to_primitive(ixI^L,ixI^L,w,x)
 
       w(ixB^S,rho_) = drhobound
 
@@ -511,13 +511,6 @@ contains
         endif
 
       enddo
-
-      !
-      ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
-      ! Also avoid overloading too much, limit to negative sound speed momentum
-      !
-      w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
-      w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
 
       ! Polar velocity field
       w(ixB^S,mom(2)) = 0.0d0
@@ -575,6 +568,22 @@ contains
 
       endif
 
+      !
+      ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
+      ! Also avoid overloading too much, limit to negative sound speed momentum
+      !
+      do i = ixBmin1,ixBmax1
+        w(i,:,mom(1)) = min(w(i,:,mom(1)), dasound)
+        w(i,:,mom(2)) = min(w(i,:,mom(2)), dasound)
+        w(i,:,mom(3)) = min(w(i,:,mom(3)), dasound)
+        w(i,:,mom(1)) = max(w(i,:,mom(1)), -dasound)
+        w(i,:,mom(2)) = max(w(i,:,mom(2)), -dasound)
+        w(i,:,mom(3)) = max(w(i,:,mom(3)), -dasound)
+      enddo
+
+      ! Convert hydro vars back to conserved to let AMRVAC do computations
+      call mhd_to_conserved(ixI^L,ixI^L,w,x)
+
     !
     ! Right radial boundary is outflow for all quantities. In usr.par 'cont'
     !
@@ -585,9 +594,6 @@ contains
     case default
       call mpistop("BC not specified")
     end select
-
-    ! Convert hydro vars back to conserved to let AMRVAC do computations
-    call mhd_to_conserved(ixI^L,ixI^L,w,x)
 
   end subroutine special_bound
 
