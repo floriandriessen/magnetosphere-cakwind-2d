@@ -613,22 +613,10 @@ contains
                           / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)))
     enddo
 
-    !=================
-    ! Non-magnetic CAK
-    !=================
-    if (iprob == 0) then
-      ! Total gradient (in CAK this has to be >0, otherwise stagnant flow)
-      dvdr(ixO^S) = abs(dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S))
-    endif
 
-    !==============
-    ! Magnetosphere
-    !==============
-    if (iprob == 1) then
-      ! Total gradient (in magnetosphere, we actually require fallback)
-      dvdr(ixO^S) = max(dvdr_down(ixO^S) + dvdr_cent(ixO^S) &
-                                         + dvdr_up(ixO^S), 0.0d0)
-    endif
+    ! Total gradient (in magnetosphere, we actually require fallback)
+    dvdr(ixO^S) = max(dvdr_down(ixO^S) + dvdr_cent(ixO^S) &
+                                       + dvdr_up(ixO^S), 0.0d0)
 
     ! Finite disk factor parameterisation (Owocki & Puls 1996)
     beta_fd(ixO^S) = ( 1.0d0 - vr(ixO^S)/(x(ixO^S,1) * dvdr(ixO^S)) ) &
