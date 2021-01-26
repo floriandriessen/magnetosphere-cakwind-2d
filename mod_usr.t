@@ -7,15 +7,6 @@
 !
 ! Coded up by Flo for his KU Leuven PhD thesis 2018-2022
 !-------------------------------------------------------------------------------
-! Options to be specified in usr.par file:
-!   iprob = 0  : non-magnetic, finite disk, Sobolev model (CAK)
-!   iprob = 1  : magnetosphere using a relaxed non-CT/CT CAK model as input
-!
-! Separate .par file exist containing required setups to start
-!
-! If iprob=1 a restart is required (specify in .par file_list) from the
-! .dat file containing the hydro variables of a relaxed 2D CAK model (iprob=0):
-!     $ {executable call} -i usr_magnetosphere.par
 !
 ! (October 2019) -- Flo
 !   > setup of problem with 1D CAK wind starting from beta law in 2D geometry
@@ -290,23 +281,8 @@ contains
       write(94,*) 'unit numberdensity = ', unit_numberdensity
       write(94,*) 'unit pressure      = ', unit_pressure
       write(94,*) 'unit temperature   = ', unit_temperature
-      if (iprob == 1) write(94,*) 'unit magneticfield = ', unit_magneticfield
+      write(94,*) 'unit magneticfield = ', unit_magneticfield
       write(94,*) 'unit time          = ', unit_time
-      write(94,*)
-      write(94,*) '==========='
-      write(94,*) '   SETUP   '
-      write(94,*) '==========='
-      write(94,*) 'Problem options:                                  '
-      write(94,*) '  iprob = 0 : non-magnetic, finite disk, CAK model'
-      write(94,*) '  iprob = 1 : CAK-magnetosphere model             '
-      write(94,*) '> Chosen option = ', iprob
-      if (iprob == 0) then
-        write(94,*) '> Making a CAK wind to be put in a magnetosphere model'
-      elseif (iprob == 1) then
-        write(94,*) '> Making a magnetosphere model with cleaner: ', typedivbfix
-      else
-        call mpistop('Choose a valid iprob {0,1}')
-      endif
       write(94,*)
       write(94,*) '==============================================='
       write(94,*) '   Stellar and wind parameters in CGS units    '
@@ -315,13 +291,13 @@ contains
       write(94,*) 'Mstar/Msun             = ', mstar/msun
       write(94,*) 'Rstar/Rsun             = ', rstar/rsun
       write(94,*) 'Twind                  = ', twind
-      if (iprob == 1) write(94,*) 'Polar magnetic field   = ', bpole
-      if (iprob == 1) write(94,*) 'Wind confinement eta   = ', etastar
-      if (iprob == 1) write(94,*) 'Ralf/Rstar             = ', ralf
-      if (iprob == 1) write(94,*) 'Rkep/Rstar             = ', rkep
-      if (iprob == 1) write(94,*) 'W (vrot/vrotc)         = ', Wrot
-      if (iprob == 1) write(94,*) 'critical vrot          = ', vrotc
-      if (iprob == 1) write(94,*) 'vrot                   = ', vrot
+      write(94,*) 'Polar magnetic field   = ', bpole
+      write(94,*) 'Wind confinement eta   = ', etastar
+      write(94,*) 'Ralf/Rstar             = ', ralf
+      write(94,*) 'Rkep/Rstar             = ', rkep
+      write(94,*) 'W (vrot/vrotc)         = ', Wrot
+      write(94,*) 'critical vrot          = ', vrotc
+      write(94,*) 'vrot                   = ', vrot
       write(94,*) 'Mean molecular weight  = ', mumol
       write(94,*) 'log(g)                 = ', logg
       write(94,*) 'eff. log(g)            = ', logge
@@ -352,8 +328,8 @@ contains
       write(94,*) 'Mstar        = ', dmstar
       write(94,*) 'Rstar        = ', drstar
       write(94,*) 'Twind        = ', dtwind
-      if (iprob == 1) write(94,*) 'Bpole        = ', dbpole
-      if (iprob == 1) write(94,*) 'Eta conf.    = ', detaconf
+      write(94,*) 'Bpole        = ', dbpole
+      write(94,*) 'Eta conf.    = ', detaconf
       write(94,*) 'Edd. gamma   = ', dgammae
       write(94,*) 'rhobound     = ', drhobound
       write(94,*) 'Mdot         = ', dmdot
@@ -364,7 +340,7 @@ contains
       write(94,*) 'asound       = ', dasound
       write(94,*) 'eff. vesc    = ', dvesc
       write(94,*) 'vinf         = ', dvinf
-      if (iprob == 1) write(94,*) 'vrot         = ', dvrot
+      write(94,*) 'vrot         = ', dvrot
       write(94,*) 'clight       = ', dclight
       write(94,*) 'Ggrav        = ', dGgrav
       write(94,*) 'Tstat        = ', dtstat
