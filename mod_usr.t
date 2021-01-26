@@ -358,10 +358,8 @@ contains
 
   subroutine initial_conditions(ixI^L,ixO^L,w,x)
     !
-    ! Initial conditions start from beta velocity law for relaxing CAK model
-    !
-    ! For magnetosphere the intial conditions are only supplied for the Bfield
-    ! as the other hydro vars are already set by a relaxed CAK model
+    ! Initial conditions start from beta velocity law with a dipole field that
+    ! is either set here, or in the usr_set_B0 when doing Tanaka splitting
     !
     use mod_global_parameters
 
@@ -384,9 +382,8 @@ contains
        w(ixI^S,rho_) = dmdot/(4.0d0*dpi * x(ixI^S,1)**2.0d0 * w(ixI^S,mom(1)))
     endwhere
 
-    ! Set no polar and azimuthal velocities
+    ! Set no polar velocity
     w(ixI^S,mom(2)) = 0.0d0
-    w(ixI^S,mom(3)) = 0.0d0
 
     ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
     w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
@@ -449,7 +446,6 @@ contains
     integer :: i
 
     select case (iB)
-
     case(1) ! Left boundary (stellar surface)
 
       ! Convert hydro vars to primitive
@@ -469,6 +465,10 @@ contains
 
       enddo
 
+      ! Prohibit ghosts to be supersonic, and avoid overloading
+      w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
+      w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
+
       ! Polar velocity field
       w(ixB^S,mom(2)) = 0.0d0
 
@@ -487,14 +487,12 @@ contains
         !   > Negligible confinement: set to zero
         !
         if (etastar >= 1.0d0) then
-
           do i = ixBmax1,ixBmin1,-1
             w(i,:,mag(2)) = w(i+1,:,mag(2)) &
                             - (w(i+2,:,mag(2)) - w(i+1,:,mag(2))) &
                             * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
           enddo
         else
-
           w(ixB^S,mag(2)) = 0.0d0
         endif
 
@@ -504,19 +502,6 @@ contains
 
       ! When using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
-
-      !
-      ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
-      ! Also avoid overloading too much, limit to negative sound speed momentum
-      !
-      do i = ixBmin1,ixBmax1
-        w(i,:,mom(1)) = min(w(i,:,mom(1)), dasound)
-        w(i,:,mom(2)) = min(w(i,:,mom(2)), dasound)
-        w(i,:,mom(3)) = min(w(i,:,mom(3)), dasound)
-        w(i,:,mom(1)) = max(w(i,:,mom(1)), -dasound)
-        w(i,:,mom(2)) = max(w(i,:,mom(2)), -dasound)
-        w(i,:,mom(3)) = max(w(i,:,mom(3)), -dasound)
-      enddo
 
       ! Convert hydro vars back to conserved to let AMRVAC do computations
       call mhd_to_conserved(ixI^L,ixI^L,w,x)
