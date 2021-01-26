@@ -64,6 +64,11 @@
 ! (December 2020) -- Flo
 !   > removed rho2vrad_av and rho2vpol_av variables from statistics
 !
+! (January 2021) -- Flo
+!   > do not start from relaxed CAK model anymore, instead start directly from
+!     beta law with Bfield (c.q. Oct 2019); adds more flexibility in multi-d
+!   > removed accordingly the 'iprob' option
+!
 !===============================================================================
 
 module mod_usr
@@ -413,9 +418,9 @@ contains
       w(ixI^S,mom(3)) = 0.0d0
 
       ! Set the magnetic field components (doing HD so no magnetic field now)
-      w(ixI^S,mag(1)) = 0.0d0
-      w(ixI^S,mag(2)) = 0.0d0
-      w(ixI^S,mag(3)) = 0.0d0
+      ! w(ixI^S,mag(1)) = 0.0d0
+      ! w(ixI^S,mag(2)) = 0.0d0
+      ! w(ixI^S,mag(3)) = 0.0d0
 
       ! Convert hydro vars to conserved to let AMRVAC do computations
       !call mhd_to_conserved(ixI^L,ixO^L,w,x)
@@ -424,7 +429,7 @@ contains
     !============================
     ! Make a magnetosphere model
     !============================
-    if (iprob == 1) then
+    !if (iprob == 1) then
 
       ! Convert hydro vars to primitive
       !call mhd_to_primitive(ixI^L,ixO^L,w,x)
@@ -453,7 +458,7 @@ contains
       ! Convert hydro vars to conserved to let AMRVAC do computations
       call mhd_to_conserved(ixI^L,ixO^L,w,x)
 
-    endif
+    !endif
 
     ! Initialize the CAK line-force and statistical quantities
     w(ixO^S,my_gcak)       = 0.0d0
@@ -518,20 +523,20 @@ contains
       !=======================
       ! Non-magnetic CAK model
       !=======================
-      if (iprob == 0) then
-        ! Azimuthal velocity field
-        w(ixB^S,mom(3)) = 0.0d0
-
-        ! No magnetic field
-        w(ixB^S,mag(1)) = 0.0d0
-        w(ixB^S,mag(2)) = 0.0d0
-        w(ixB^S,mag(3)) = 0.0d0
-      endif
+      ! if (iprob == 0) then
+      !   ! Azimuthal velocity field
+      !   w(ixB^S,mom(3)) = 0.0d0
+      !
+      !   ! No magnetic field
+      !   w(ixB^S,mag(1)) = 0.0d0
+      !   w(ixB^S,mag(2)) = 0.0d0
+      !   w(ixB^S,mag(3)) = 0.0d0
+      ! endif
 
       !====================
       ! Magnetosphere model
       !====================
-      if (iprob == 1) then
+      !if (iprob == 1) then
 
         ! Azimuthal velocity field
         w(ixB^S,mom(3)) = dvrot * dsin(x(ixB^S,2))
@@ -566,7 +571,7 @@ contains
         ! When using Dedner+(2002) divergence cleaning
         if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
-      endif
+      !endif
 
       !
       ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
