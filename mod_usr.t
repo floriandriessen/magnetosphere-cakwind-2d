@@ -395,7 +395,7 @@ contains
     !==================================================================
     ! Make a non-magnetic CAK model to be used later in a magnetosphere
     !==================================================================
-    if (iprob == 0) then
+    !if (iprob == 0) then
 
       ! Small offset (asound/vinf) to avoid starting at terminal wind speed
       sfac = 1.0d0 - 1.0d-3**(1.0d0/beta)
@@ -418,8 +418,8 @@ contains
       w(ixI^S,mag(3)) = 0.0d0
 
       ! Convert hydro vars to conserved to let AMRVAC do computations
-      call mhd_to_conserved(ixI^L,ixO^L,w,x)
-    endif
+      !call mhd_to_conserved(ixI^L,ixO^L,w,x)
+    !endif
 
     !============================
     ! Make a magnetosphere model
@@ -427,7 +427,7 @@ contains
     if (iprob == 1) then
 
       ! Convert hydro vars to primitive
-      call mhd_to_primitive(ixI^L,ixO^L,w,x)
+      !call mhd_to_primitive(ixI^L,ixO^L,w,x)
 
       ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
       w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
