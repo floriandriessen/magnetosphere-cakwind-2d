@@ -1,46 +1,37 @@
 !=================================================
 ! Project : 2D isothermal, magnetic CAK wind
 !
-! Aim     : start from a relaxed 2D CAK model to
+! Aim     : start from a beta law wind to
 !           study wind-magnetosphere interaction
-!           > make sure restart_from_file points
-!             to correct file 
 !
 ! Config  : setup.pl -d=2
 !=================================================
 
 &filelist
   base_filename     = 'test/ms'
-  restart_from_file = 'relaxedCAKmodels/zeta_puppis_280x120_rs7/cak0100.dat'
-  firstprocess      = .true.
   saveprim          = .true.
   autoconvert       = .true.
   nwauxio           = 2 
   convert_type      = 'vtuBCCmpi'
-  w_write(16:22)    = 7*.false. ! not save statistics tmp variables in output
+  w_write(16:22)    = 7*.false.
 /
 
 &savelist
   itsave(1,1) = 0       ! save on startup log output
   itsave(1,2) = 0       ! save on startup normal output
-  itsave(1,1) = 1       ! save on first time step log output
-  itsave(1,2) = 1       ! save on first time step normal output
   ditsave_log = 1000	! save every xxx iterations to the log file
-  dtsave_dat  = 1.0d-2	! save dat file after each xxx unit time
+  dtsave_dat  = 5.0d-3	! save dat file after each xxx unit time
 /
 
 &stoplist
   dtmin      = 1.d-20
-  time_max   = 0.5d0
-  reset_it   = .true.
-  reset_time = .true.
-  time_init  = 0
+  time_max   = 1.0d0
 /
 
 &methodlist
   time_integrator = 'twostep'
   flux_scheme     = 'hll'
-  limiter         = 'minmod'
+  limiter         = 'vanleer'
 /
 
 &boundlist
@@ -52,28 +43,29 @@
 /
 
 &meshlist
-  iprob                 = 1
-  domain_nx1            = 280 
-  domain_nx2            = 120
-  block_nx1             = 70 
-  block_nx2             = 30 
-  xprobmin1             = 1.0d0 
-  xprobmax1             = 7.0d0 
-  xprobmin2             = 0.0d0
-  xprobmax2             = 0.5d0
-  stretch_dim(1)        = 'uni'
+  domain_nx1     = 280 
+  domain_nx2     = 120
+  block_nx1      = 70 
+  block_nx2      = 30 
+  xprobmin1      = 1.0d0 
+  xprobmax1      = 7.0d0 
+  xprobmin2      = 0.0d0
+  xprobmax2      = 0.5d0
+  stretch_dim(1) = 'uni'
+  stretch_dim(2) = 'symm'
   qstretch_baselevel(1) = 1.02
+  qstretch_baselevel(2) = 1.02
+  nstretchedblocks_baselevel(2) = 4
 /
 
 &paramlist
   courantpar = 0.3d0 
-  slowsteps  = 50
 /
 
 &mhd_list
   mhd_energy  = .false.
   mhd_gamma   = 1.0d0
-  typedivbfix = 'glm'
+  typedivbfix = 'powel'
   B0field     = .false.	
 /
 
@@ -82,13 +74,13 @@
   mstar    = 50.0d0
   rstar    = 20.0d0
   twind    = 4.0d4
-  imag     = -1.0d0     ! if imag>0: bpole = imag, if imag<0: etastar = -imag
+  imag     = 1.0d3     
   rhobound = 1.2d-11
   alpha    = 0.65d0
   Qbar     = 2000.0d0
   Qmax     = 0.00395d0
   kappae   = 0.34d0
   beta     = 0.8d0
-  tstat    = 2.0d5
+  tstat    = 5.0d5
   Wrot     = 0.0d0
 /
