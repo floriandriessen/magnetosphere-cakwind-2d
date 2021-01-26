@@ -70,7 +70,8 @@ module mod_usr
   implicit none
 
   ! The usual suspects
-  real(8) :: msun=1.989d33, lsun=3.827d33, rsun=6.96d10, Ggrav=6.67d-8
+  real(8), parameter :: msun=1.989d33, lsun=3.827d33, rsun=6.96d10, &
+                        Ggrav=6.67d-8, kappae=0.34d0
 
   ! Stellar parameters: luminosity, mass, radius, surface density, eff. temp.,
   !                     polar magnetic field, wind magnetic confinement
@@ -85,15 +86,13 @@ module mod_usr
   ! Unit quantities that are handy: gravitational constant, luminosity, mass
   real(8) :: my_unit_ggrav, my_unit_lum, my_unit_mass
 
-  ! log(g), eff. log(g) + scale height, year [s], mean mol. weight
-  real(8) :: logg, logge, heff, year=3.15567d7, mumol
+  ! log(g), eff. log(g) + scale height, mean mol. weight
+  real(8) :: logg, logge, heff, mumol
 
   !
-  ! Wind parameters: CAK alpha, Gayley Qbar + Qmax, opacity electron scattering,
-  !                  Eddington gamma, escape speed,
+  ! Wind parameters: CAK alpha, Gayley Qbar, Eddington gamma, escape speed,
   !                  CAK + fd mass-loss rate, terminal wind speed, sound speed
-  real(8) :: alpha, Qbar, Qmax, kappae, gammae, vesc, mdot, mdotfd, &
-             vinf, asound
+  real(8) :: alpha, Qbar, gammae, vesc, mdot, mdotfd, vinf, asound
 
   ! Time-step accounting radiation force, time to start statistical computation
   real(8) :: new_timestep, tstat
@@ -103,10 +102,8 @@ module mod_usr
              dvesc, dvinf, dmdot, dasound, dclight, dGgrav, dgammae, detaconf, &
              dtstat, dvrot
 
-  ! Additional names for wind variables
+  ! Additional names for wind and statistical variables
   integer :: my_gcak
-
-  ! Additional names for statistical wind variables
   integer :: my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav, my_vpolav, &
              my_vpol2av
   integer :: my_tmp1, my_tmp2, my_tmp3, my_tmp4, my_tmp5,my_tmp6, my_tmp7
@@ -131,7 +128,6 @@ contains
     ! Choose independent normalization units, only 3 have to be specified:
     !     (length,temp,ndens) or (length,vel,ndens)
     ! Numberdensity chosen such that unit density becomes boundary density
-    ! IMPORTANT: AMRVAC cannot be run in CGS units <=> unit quantities = 1
     !
     unit_length        = rstar                                      ! cm
     unit_temperature   = twind                                      ! K
@@ -160,14 +156,13 @@ contains
     usr_process_grid => compute_stats
 
     ! Compute and include Alfven speed and divergence of Bfield as output
-    ! (only stored when doing magnetosphere models)
     usr_aux_output    => set_extravar_output
     usr_add_aux_names => set_extravarnames_output
 
     ! Background dipole field if using Tanaka field splitting
     usr_set_B0 => make_dipoleboy
 
-    ! User source variables to store in output (only temporary in source comp.)
+    ! User source variables to store in output
     my_gcak = var_set_extravar("gcak", "gcak")
 
     ! Statistical quantities and temporary storage variables
@@ -196,7 +191,6 @@ contains
     ! Read in the usr.par file with the problem specific list
     !
     use mod_global_parameters, only: unitpar
-    use mod_constants
 
     ! Subroutine argument
     character(len=*), intent(in) :: files(:)
@@ -205,7 +199,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, Qmax, kappae, tstat, Wrot
+                          Qbar, tstat, Wrot
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -240,7 +234,6 @@ contains
     vrot   = vrotc * Wrot
 
     ! Wind quantities in CAK theory
-    Qmax    = Qmax * Qbar
     vesc    = (2.0d0 * Ggrav * mstar*(1.0d0 - gammae)/rstar)**0.5d0
     vinf    = vesc * (alpha/(1.0d0 - alpha))**0.5d0
     mdot    = lstar/const_c**2.0d0 * alpha/(1.0d0 - alpha) &
@@ -308,14 +301,13 @@ contains
       write(94,*) 'adiabatic gamma = ', mhd_gamma
       write(94,*) 'alpha           = ', alpha
       write(94,*) 'Qbar            = ', Qbar
-      write(94,*) 'Qmax/Qbar       = ', Qmax/Qbar
       write(94,*) 'asound          = ', asound
       write(94,*) 'eff. vesc       = ', vesc
       write(94,*) 'vinf            = ', vinf
       write(94,*)
       write(94,*) 'surface density        = ', rhobound
-      write(94,*) 'analytic Mdot CAK      = ', mdot * (year/msun)
-      write(94,*) '... with FD correction = ', mdotfd * (year/msun)
+      write(94,*) 'analytic Mdot CAK      = ', mdot * (const_years/msun)
+      write(94,*) '... with FD correction = ', mdotfd * (const_years/msun)
       write(94,*)
       write(94,*) '========================================'
       write(94,*) '    Dimensionless AMRVAC quantities     '
@@ -335,7 +327,6 @@ contains
       write(94,*) 'Mdot         = ', dmdot
       write(94,*) 'alpha        = ', alpha
       write(94,*) 'Qbar         = ', Qbar
-      write(94,*) 'Qmax         = ', Qmax/Qbar
       write(94,*) 'kappae       = ', dkappae
       write(94,*) 'asound       = ', dasound
       write(94,*) 'eff. vesc    = ', dvesc

@@ -36,7 +36,7 @@ It might be beneficial in some user cases to turn on Tanaka's magnetic field spl
 B0field = .true.
 ```
 
-and in the code the `dipoleboy` subroutine is called instead to add a global, time-independent background dipole field. 
+and in the code the `make_dipoleboy` subroutine is called instead to add a global, time-independent background dipole field. 
 
 ## Extending a simulation
 
@@ -98,9 +98,6 @@ Additionally, a `star_list` is specified in the .par file containing variables s
 |          | if `imag < 0`: `etastar = -imag`                                                       | rhobound | boundary density (g/cm^3)                                         |
 | alpha    | CAK line-force parameter (no units)                               |
 | Qbar     | Gayley's line-force parameter (no units)                          |
-| Qmax     | OCR's cut-off parameter (no units)                                |
-| kappae   | electron scattering opacity                                       |
-| beta     | beta velocity law power index (no units)                          |
 | tstat    | time to start to compute statistical averages (sec)               |
 | Wrot     | ratio of equatorial rotational velocity to orbital (critical)  velocity |
 
