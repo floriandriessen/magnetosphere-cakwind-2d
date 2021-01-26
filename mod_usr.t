@@ -90,9 +90,9 @@ module mod_usr
 
   !
   ! Wind parameters: CAK alpha, Gayley Qbar + Qmax, opacity electron scattering,
-  !                  beta power velocity law, Eddington gamma, escape speed,
+  !                  Eddington gamma, escape speed,
   !                  CAK + fd mass-loss rate, terminal wind speed, sound speed
-  real(8) :: alpha, Qbar, Qmax, kappae, beta, gammae, vesc, mdot, mdotfd, &
+  real(8) :: alpha, Qbar, Qmax, kappae, gammae, vesc, mdot, mdotfd, &
              vinf, asound
 
   ! Time-step accounting radiation force, time to start statistical computation
@@ -205,7 +205,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, Qmax, kappae, beta, tstat, Wrot
+                          Qbar, Qmax, kappae, tstat, Wrot
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -358,8 +358,8 @@ contains
 
   subroutine initial_conditions(ixI^L,ixO^L,w,x)
     !
-    ! Initial conditions start from beta velocity law with a dipole field that
-    ! is either set here, or in the usr_set_B0 when doing Tanaka splitting
+    ! Initial conditions start from finite-disk beta velocity law with a
+    ! dipole field initialised here or usr_set_B0 when doing Tanaka splitting
     !
     use mod_global_parameters
 
@@ -368,8 +368,9 @@ contains
     real(8), intent(in)    :: x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
-    ! Local variable
-    real(8) :: sfac
+    ! Local variables
+    real(8)            :: sfac
+    real(8), parameter :: beta=0.8d0
 
     ! Small offset (asound/vinf) to avoid starting at terminal wind speed
     sfac = 1.0d0 - 1.0d-3**(1.0d0/beta)
