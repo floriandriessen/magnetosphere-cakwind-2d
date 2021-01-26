@@ -397,78 +397,54 @@ contains
     ! Local variable
     real(8) :: sfac
 
-    !==================================================================
-    ! Make a non-magnetic CAK model to be used later in a magnetosphere
-    !==================================================================
-    !if (iprob == 0) then
+    ! Small offset (asound/vinf) to avoid starting at terminal wind speed
+    sfac = 1.0d0 - 1.0d-3**(1.0d0/beta)
 
-      ! Small offset (asound/vinf) to avoid starting at terminal wind speed
-      sfac = 1.0d0 - 1.0d-3**(1.0d0/beta)
+    where (x(ixI^S,1) >= drstar)
+       ! Set initial velocity field to beta law
+       w(ixI^S,mom(1)) = dvinf * ( 1.0d0 - sfac * drstar / x(ixI^S,1) )**beta
 
-      where (x(ixI^S,1) >= drstar)
-         ! Set initial velocity field to beta law
-         w(ixI^S,mom(1)) = dvinf * ( 1.0d0 - sfac * drstar / x(ixI^S,1) )**beta
+       ! Set initial density
+       w(ixI^S,rho_) = dmdot/(4.0d0*dpi * x(ixI^S,1)**2.0d0 * w(ixI^S,mom(1)))
+    endwhere
 
-         ! Set initial density
-         w(ixI^S,rho_) = dmdot/(4.0d0*dpi * x(ixI^S,1)**2.0d0 * w(ixI^S,mom(1)))
-      endwhere
+    ! Set no polar and azimuthal velocities
+    w(ixI^S,mom(2)) = 0.0d0
+    w(ixI^S,mom(3)) = 0.0d0
 
-      ! Set no polar and azimuthal velocities
-      w(ixI^S,mom(2)) = 0.0d0
-      w(ixI^S,mom(3)) = 0.0d0
+    ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
+    w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
 
-      ! Set the magnetic field components (doing HD so no magnetic field now)
-      ! w(ixI^S,mag(1)) = 0.0d0
-      ! w(ixI^S,mag(2)) = 0.0d0
-      ! w(ixI^S,mag(3)) = 0.0d0
+    ! Setup magnetic field based on Tanaka splitting or regular
+    if (B0field) then
+      w(ixI^S,mag(:)) = 0.0d0
+    else
+      ! Radial magnetic dipole field
+      w(ixI^S,mag(1)) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
 
-      ! Convert hydro vars to conserved to let AMRVAC do computations
-      !call mhd_to_conserved(ixI^L,ixO^L,w,x)
-    !endif
+      ! Polar magnetic dipole field
+      w(ixI^S,mag(2)) = 0.5d0 * dbpole &
+                        * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
 
-    !============================
-    ! Make a magnetosphere model
-    !============================
-    !if (iprob == 1) then
+      ! Azimuthal magnetic field
+      w(ixI^S,mag(3)) = 0.0d0
+    endif
 
-      ! Convert hydro vars to primitive
-      !call mhd_to_primitive(ixI^L,ixO^L,w,x)
+    ! If using Dedner+(2002) divergence cleaning
+    if (mhd_glm) w(ixO^S,psi_) = 0.0d0
 
-      ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
-      w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
-
-      ! Setup magnetic field based on Tanaka splitting or regular
-      if (B0field) then
-        w(ixI^S,mag(:)) = 0.0d0
-      else
-        ! Radial magnetic dipole field
-        w(ixI^S,mag(1)) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
-
-        ! Polar magnetic dipole field
-        w(ixI^S,mag(2)) = 0.5d0 * dbpole &
-                          * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
-
-        ! Azimuthal magnetic field
-        w(ixI^S,mag(3)) = 0.0d0
-      endif
-
-      ! If using Dedner+(2002) divergence cleaning
-      if (mhd_glm) w(ixO^S,psi_) = 0.0d0
-
-      ! Convert hydro vars to conserved to let AMRVAC do computations
-      call mhd_to_conserved(ixI^L,ixO^L,w,x)
-
-    !endif
+    ! Convert hydro vars to conserved to let AMRVAC do computations
+    call mhd_to_conserved(ixI^L,ixO^L,w,x)
 
     ! Initialize the CAK line-force and statistical quantities
-    w(ixO^S,my_gcak)       = 0.0d0
-    w(ixO^S,my_rhoav)      = 0.0d0
-    w(ixO^S,my_rho2av)     = 0.0d0
-    w(ixO^S,my_vrav)       = 0.0d0
-    w(ixO^S,my_vr2av)      = 0.0d0
-    w(ixO^S,my_vpolav)     = 0.0d0
-    w(ixO^S,my_vpol2av)    = 0.0d0
-    w(ixO^S,my_rhovrav)    = 0.0d0
+    w(ixO^S,my_gcak)    = 0.0d0
+    w(ixO^S,my_rhoav)   = 0.0d0
+    w(ixO^S,my_rho2av)  = 0.0d0
+    w(ixO^S,my_vrav)    = 0.0d0
+    w(ixO^S,my_vr2av)   = 0.0d0
+    w(ixO^S,my_vpolav)  = 0.0d0
+    w(ixO^S,my_vpol2av) = 0.0d0
+    w(ixO^S,my_rhovrav) = 0.0d0
 
     w(ixO^S,my_tmp1) = 0.0d0
     w(ixO^S,my_tmp2) = 0.0d0
@@ -520,58 +496,38 @@ contains
       ! Polar velocity field
       w(ixB^S,mom(2)) = 0.0d0
 
-      !=======================
-      ! Non-magnetic CAK model
-      !=======================
-      ! if (iprob == 0) then
-      !   ! Azimuthal velocity field
-      !   w(ixB^S,mom(3)) = 0.0d0
-      !
-      !   ! No magnetic field
-      !   w(ixB^S,mag(1)) = 0.0d0
-      !   w(ixB^S,mag(2)) = 0.0d0
-      !   w(ixB^S,mag(3)) = 0.0d0
-      ! endif
+      ! Azimuthal velocity field
+      w(ixB^S,mom(3)) = dvrot * dsin(x(ixB^S,2))
 
-      !====================
-      ! Magnetosphere model
-      !====================
-      !if (iprob == 1) then
+      if (B0field) then
+        w(ixB^S,mag(:)) = 0.0d0
+      else
+        ! Radial magnetic dipole field
+        w(ixB^S,mag(1)) = dbpole * dcos(x(ixB^S,2))
 
-        ! Azimuthal velocity field
-        w(ixB^S,mom(3)) = dvrot * dsin(x(ixB^S,2))
+        !
+        ! Polar magnetic dipole field
+        !   > Magnetic confinement: do linear extrapolation
+        !   > Negligible confinement: set to zero
+        !
+        if (etastar >= 1.0d0) then
 
-        if (B0field) then
-          w(ixB^S,mag(:)) = 0.0d0
+          do i = ixBmax1,ixBmin1,-1
+            w(i,:,mag(2)) = w(i+1,:,mag(2)) &
+                            - (w(i+2,:,mag(2)) - w(i+1,:,mag(2))) &
+                            * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
+          enddo
         else
-          ! Radial magnetic dipole field
-          w(ixB^S,mag(1)) = dbpole * dcos(x(ixB^S,2))
 
-          !
-          ! Polar magnetic dipole field
-          !   > Magnetic confinement: do linear extrapolation
-          !   > Negligible confinement: set to zero
-          !
-          if (etastar >= 1.0d0) then
-
-            do i = ixBmax1,ixBmin1,-1
-              w(i,:,mag(2)) = w(i+1,:,mag(2)) &
-                              - (w(i+2,:,mag(2)) - w(i+1,:,mag(2))) &
-                              * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
-            enddo
-          else
-
-            w(ixB^S,mag(2)) = 0.0d0
-          endif
-
-          ! Azimuthal magnetic field
-          w(ixB^S,mag(3)) = 0.0d0
+          w(ixB^S,mag(2)) = 0.0d0
         endif
 
-        ! When using Dedner+(2002) divergence cleaning
-        if (mhd_glm) w(ixB^S,psi_) = 0.0d0
+        ! Azimuthal magnetic field
+        w(ixB^S,mag(3)) = 0.0d0
+      endif
 
-      !endif
+      ! When using Dedner+(2002) divergence cleaning
+      if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
       !
       ! Prohibit ghosts to be supersonic, if so put on sound speed momentum
