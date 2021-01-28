@@ -115,9 +115,7 @@ contains
 
   !> This routine should set user methods, and activate the physics module
   subroutine usr_init()
-    use mod_global_parameters
-    use mod_usr_methods
-
+    
     ! Choose coordinate system: 2.5D spherical
     call set_coordinate_system("spherical_2.5D")
 
@@ -190,7 +188,6 @@ contains
     !
     ! Read in the usr.par file with the problem specific list
     !
-    use mod_global_parameters, only: unitpar
 
     ! Subroutine argument
     character(len=*), intent(in) :: files(:)
@@ -220,8 +217,6 @@ contains
     !
     ! Compute some quantities of interest (in CGS) before making unitless
     !
-    use mod_global_parameters
-    use mod_constants
 
     ! Stellar structure
     gammae = kappae * lstar/(4.d0*dpi * Ggrav * mstar * const_c)
@@ -352,7 +347,6 @@ contains
     ! Initial conditions start from finite-disk beta velocity law with a
     ! dipole field initialised here or usr_set_B0 when doing Tanaka splitting
     !
-    use mod_global_parameters
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L
@@ -427,7 +421,6 @@ contains
     !
     ! Modified boundary values only at left radial boundary (star)
     !
-    use mod_global_parameters
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixB^L, iB
@@ -467,30 +460,29 @@ contains
       ! Azimuthal velocity field
       w(ixB^S,mom(3)) = dvrot * dsin(x(ixB^S,2))
 
-      if (B0field) then
-        w(ixB^S,mag(:)) = 0.0d0
-      else
-        ! Radial magnetic dipole field
-        w(ixB^S,mag(1)) = dbpole * dcos(x(ixB^S,2))
+      ! Radial magnetic dipole field
+      w(ixB^S,mag(1)) = dbpole * dcos(x(ixB^S,2))
 
-        !
-        ! Polar magnetic dipole field
-        !   > Magnetic confinement: do linear extrapolation
-        !   > Negligible confinement: set to zero
-        !
-        if (etastar >= 1.0d0) then
-          do i = ixBmax1,ixBmin1,-1
-            w(i^%1ixB^S,mag(2)) = w(i+1^%1ixB^S,mag(2)) &
+      !
+      ! Polar magnetic dipole field
+      !   > Magnetic confinement: do linear extrapolation
+      !   > No confinement: set to zero
+      !
+      if (etastar >= 1.0d0) then
+        do i = ixBmax1,ixBmin1,-1
+          w(i^%1ixB^S,mag(2)) = w(i+1^%1ixB^S,mag(2)) &
                             - (w(i+2^%1ixB^S,mag(2)) - w(i+1^%1ixB^S,mag(2))) &
                             * (x(i+1^%1ixB^S,1) - x(i,:,1))/(x(i+2^%1ixB^S,1) - x(i+1^%1ixB^S,1))
-          enddo
-        else
-          w(ixB^S,mag(2)) = 0.0d0
-        endif
-
-        ! Azimuthal magnetic field
-        w(ixB^S,mag(3)) = 0.0d0
+        enddo
+      else
+        w(ixB^S,mag(2)) = 0.0d0
       endif
+
+      ! Azimuthal magnetic field
+      w(ixB^S,mag(3)) = 0.0d0
+
+      ! Tanaka split: subtract background field to get deviated boundary field
+      if (B0field) w(ixB^S,mag(:)) = w(ixB^S,mag(:)) - block%B0(ixB^S,:,0)
 
       ! When using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
@@ -510,7 +502,6 @@ contains
     !
     ! Compute the analytical CAK line-force
     !
-    use mod_global_parameters
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L, iw^LIM
@@ -625,7 +616,6 @@ contains
     !
     ! After first iteration assign the new time-step of computation CAK force
     !
-    use mod_global_parameters
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L
@@ -665,7 +655,6 @@ contains
     ! iteration we have to 'un-normalize' it back in time 'tnorm - dt' to
     ! compute the current timestep <X> again
     !
-    use mod_global_parameters
 
     ! Subroutine arguments
     integer, intent(in)    :: igrid,level,ixI^L,ixO^L
@@ -746,7 +735,6 @@ contains
     ! Normalize quantities in use to unit quantities defined and computed
     ! These quantities are actually used by AMRVAC in its computations!
     !
-    use mod_global_parameters
 
     ! From the AMRVAC unit vars compute some extra relevant for us
     my_unit_ggrav = unit_density * unit_time**2.0d0
@@ -779,7 +767,6 @@ contains
     !
     ! Computes and stores additional variables of interest
     !
-    use mod_global_parameters
 
     ! Subroutine arguments
     integer, intent(in) :: ixI^L,ixO^L
@@ -825,7 +812,6 @@ contains
     ! Add a steady (time-independent) potential dipole background field with
     ! polar field strength set by dimensionless 'dbpole'
     !
-    use mod_global_parameters
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L,ixO^L
