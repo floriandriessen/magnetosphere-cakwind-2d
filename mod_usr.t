@@ -425,7 +425,7 @@ contains
 
   subroutine special_bound(qt,ixI^L,ixB^L,iB,w,x)
     !
-    ! Modified boundary values only at lower radial boundary (star)
+    ! Modified boundary values only at left radial boundary (star)
     !
     use mod_global_parameters
 
@@ -438,7 +438,7 @@ contains
     integer :: i
 
     select case (iB)
-    case(1) ! Left boundary (stellar surface)
+    case(1)
 
       ! Convert hydro vars to primitive
       call mhd_to_primitive(ixI^L,ixI^L,w,x)
@@ -448,11 +448,11 @@ contains
       ! Radial velocity field (slope extrapolation in 1st ghost, then constant)
       do i = ixBmax1,ixBmin1,-1
         if (i == ixBmax1) then
-          w(i,:,mom(1)) = w(i+1,:,mom(1)) &
-                           - (w(i+2,:,mom(1)) - w(i+1,:,mom(1))) &
-                           * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
+          w(i^%1ixB^S,mom(1)) = w(i+1^%1ixB^S,mom(1)) &
+                           - (w(i+2^%1ixB^S,mom(1)) - w(i+1^%1ixB^S,mom(1))) &
+                           * (x(i+1^%1ixB^S,1) - x(i^%1ixB^S,1))/(x(i+2^%1ixB^S,1) - x(i+1^%1ixB^S,1))
         else
-          w(i,:,mom(1)) = w(i+1,:,mom(1))
+          w(i^%1ixB^S,mom(1)) = w(i+1^%1ixB^S,mom(1))
         endif
 
       enddo
@@ -480,9 +480,9 @@ contains
         !
         if (etastar >= 1.0d0) then
           do i = ixBmax1,ixBmin1,-1
-            w(i,:,mag(2)) = w(i+1,:,mag(2)) &
-                            - (w(i+2,:,mag(2)) - w(i+1,:,mag(2))) &
-                            * (x(i+1,:,1) - x(i,:,1))/(x(i+2,:,1) - x(i+1,:,1))
+            w(i^%1ixB^S,mag(2)) = w(i+1^%1ixB^S,mag(2)) &
+                            - (w(i+2^%1ixB^S,mag(2)) - w(i+1^%1ixB^S,mag(2))) &
+                            * (x(i+1^%1ixB^S,1) - x(i,:,1))/(x(i+2^%1ixB^S,1) - x(i+1^%1ixB^S,1))
           enddo
         else
           w(ixB^S,mag(2)) = 0.0d0
@@ -498,13 +498,6 @@ contains
       ! Convert hydro vars back to conserved to let AMRVAC do computations
       call mhd_to_conserved(ixI^L,ixI^L,w,x)
 
-    !
-    ! Right radial boundary is outflow for all quantities. In usr.par 'cont'
-    !
-    ! Bottom + top angular boundary are 'symm' for scalar quantities, angular
-    ! vector quantities are set 'asymm'. This can be auto-achieved by setting
-    ! the boundary to 'pole'
-    !
     case default
       call mpistop("BC not specified")
     end select
