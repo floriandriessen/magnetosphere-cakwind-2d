@@ -6,7 +6,7 @@ Make MHD model of the radiation-driven wind of a magnetic O-star interacting wit
 
 ## Setup
 
-After cloning go into the local directory and fetch AMRVAC makefile (assuming you have exported the AMRVAC_DIR variable in the .bashrc (linux) or .bash_profile (macos))
+After cloning go into the local directory and fetch AMRVAC makefile (assuming you have exported the `AMRVAC_DIR` variable in the `.bashrc` on linux or `.bash_profile` on macos)
 ```
 $ setup.pl -d=2
 ```
@@ -103,7 +103,7 @@ Additionally, a `star_list` is specified in the .par file containing variables s
 
 ## Notice
 
-Tested with AMRVAC version 2.3 (Fall 2019).
+Tested with AMRVAC version 2.2 (Fall 2019).
 
 ## Known issues
 
