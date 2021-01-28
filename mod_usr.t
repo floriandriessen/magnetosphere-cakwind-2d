@@ -559,10 +559,16 @@ contains
                           / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)))
     enddo
 
+    ! Total gradient
+    dvdr(ixO^S) = dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S)
 
-    ! Total gradient (in magnetosphere, we actually require fallback)
-    dvdr(ixO^S) = max(dvdr_down(ixO^S) + dvdr_cent(ixO^S) &
-                                       + dvdr_up(ixO^S), 0.0d0)
+    if (etastar < 1.0d0) then
+      ! Non-confined; make gradient > 0 to avoid stagnant flow
+      dvdr(ixO^S) = abs(dvdr(ixO^S))
+    else
+      ! In magnetosphere, we actually require fallback)
+      dvdr(ixO^S) = max(dvdr(ixO^S), 0.0d0)
+    endif
 
     ! Finite disk factor parameterisation (Owocki & Puls 1996)
     beta_fd(ixO^S) = ( 1.0d0 - vr(ixO^S)/(x(ixO^S,1) * dvdr(ixO^S)) ) &
