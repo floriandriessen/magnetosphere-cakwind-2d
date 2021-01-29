@@ -8,12 +8,12 @@
 !=================================================
 
 &filelist
-  base_filename     = 'test/ms'
-  saveprim          = .true.
-  autoconvert       = .true.
-  nwauxio           = 2 
-  convert_type      = 'vtuBCCmpi'
-  w_write(16:22)    = 7*.false.
+  base_filename  = 'test/ms'
+  saveprim       = .true.
+  autoconvert    = .true.
+  nwauxio        = 2
+  convert_type   = 'vtuBCCmpi'
+  w_write(16:22) = 7*.false.
 /
 
 &savelist
@@ -24,8 +24,8 @@
 /
 
 &stoplist
-  dtmin      = 1.d-20
-  time_max   = 1.0d0
+  dtmin    = 1.d-20
+  time_max = 1.0d0
 /
 
 &methodlist
