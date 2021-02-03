@@ -115,7 +115,7 @@ contains
 
   !> This routine should set user methods, and activate the physics module
   subroutine usr_init()
-    
+
     ! Choose coordinate system: 2.5D spherical
     call set_coordinate_system("spherical_2.5D")
 
@@ -357,19 +357,7 @@ contains
     real(8)            :: sfac
     real(8), parameter :: beta=0.8d0
 
-    ! Small offset (asound/vinf) to avoid starting at terminal wind speed
-    sfac = 1.0d0 - 1.0d-3**(1.0d0/beta)
-
-    where (x(ixI^S,1) >= drstar)
-       ! Set initial velocity field to beta law
-       w(ixI^S,mom(1)) = dvinf * ( 1.0d0 - sfac * drstar / x(ixI^S,1) )**beta
-
-       ! Set initial density
-       w(ixI^S,rho_) = dmdot/(4.0d0*dpi * x(ixI^S,1)**2.0d0 * w(ixI^S,mom(1)))
-    endwhere
-
-    ! Set no polar velocity
-    w(ixI^S,mom(2)) = 0.0d0
+    call mhd_to_primitive(ixI^L,ixO^L,w,x)
 
     ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
     w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
