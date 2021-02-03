@@ -8,7 +8,9 @@
 !=================================================
 
 &filelist
-  base_filename  = 'test/ms'
+  base_filename  = 'newread/ms'
+  restart_from_file = 'relaxedCAKmodels/zeta_puppis_280x120_rs7_latstretch/cak0100.dat'
+  firstprocess = .true.
   saveprim       = .true.
   autoconvert    = .true.
   nwauxio        = 2
@@ -26,6 +28,9 @@
 &stoplist
   dtmin    = 1.d-20
   time_max = 1.0d0
+  reset_it   = .true.
+  reset_time = .true.
+  time_init  = 0
 /
 
 &methodlist
