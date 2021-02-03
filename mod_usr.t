@@ -353,11 +353,17 @@ contains
     real(8), intent(in)    :: x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
-    ! Local variables
-    real(8)            :: sfac
-    real(8), parameter :: beta=0.8d0
+    ! Local variable
+    integer :: ir
 
-    call mhd_to_primitive(ixI^L,ixO^L,w,x)
+    ! Read in the density and radial velocity from 1D CAK file
+    do ir = ixOmin1,ixOmax1
+      w(ir,:,rho_) = read_initial_conditions(x(ir,nghostcells+1,1),2)
+      w(ir,:,mom(1)) = read_initial_conditions(x(ir,nghostcells+1,1),3)
+    enddo
+
+    ! Set polar velocity field
+    w(ixI^S,mom(2)) = 0.0d0
 
     ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
     w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
@@ -811,5 +817,55 @@ contains
     wB0(ixI^S,3) = 0.0d0
 
   end subroutine make_dipoleboy
+
+!===============================================================================
+
+  function read_initial_conditions(r_in,index) result(var)
+    !
+    ! Hacky function adopted from Nico to read in 1D CAK .blk file that is
+    ! produced with the CAKwind_1d code
+    !
+    ! Based on index compare w-array of file with the previous line, exit if
+    ! it supersedes the index if the radial array r_in
+    !
+    ! NOTE1: with this method the last zone from input file is not read in but
+    !        such a big deal
+    ! NOTE2: Nico's version does also interpolation, but left out here
+    ! NOTE3: Ensure that initfile grid has same amount of zones and gridstretch
+    !        as the grid that is deployed in the simulation
+    !
+
+    ! Subroutine arguments
+    integer, intent(in) :: index
+    real(8), intent(in) :: r_in
+
+    ! Local variables
+    real(8) :: var, nctot, ncells
+    real(8) :: w(1:5), w_mo(1:5)
+    integer :: ll, unit=69
+
+    ! w-array here also contains the xgrid together with rho,vr,gcak,fd
+    w(:) = 0.0d0
+
+    open(unit, file='cak0021.blk')
+    read(unit,*) !> header
+    read(unit,*) nctot, ncells
+    read(unit,*) !> header
+    read(unit,*) w !> first line of data
+
+    do ll = 1,ncells
+      w_mo = w
+      read(unit,*) w
+      if (w(1) > r_in) exit
+    enddo
+
+    close(unit)
+
+    var = w_mo(index)
+
+    ! Sanity check (for now very simple and not robust)
+    if (ncells /= domain_nx1) call mpistop('FAILED to read in 1D initfile')
+
+  end function read_initial_conditions
 
 end module mod_usr
