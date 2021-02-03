@@ -840,9 +840,9 @@ contains
     real(8), intent(in) :: r_in
 
     ! Local variables
-    real(8) :: var, nctot, ncells
+    real(8) :: var
     real(8) :: w(1:5), w_mo(1:5)
-    integer :: ll, unit=69
+    integer :: ll, nctot, ncells, unit=69
 
     ! w-array here also contains the xgrid together with rho,vr,gcak,fd
     w(:) = 0.0d0
