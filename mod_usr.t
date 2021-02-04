@@ -60,6 +60,10 @@
 !     beta law with Bfield (c.q. Oct 2019); adds more flexibility in multi-d
 !   > removed accordingly the 'iprob' option
 !
+! (February 2021) -- Flo
+!   > starting from beta law in high confinement leads to crash, removed mods
+!     from January; instead now 1D relaxed CAK read in
+!
 !===============================================================================
 
 module mod_usr
@@ -111,6 +115,7 @@ module mod_usr
   character(len=8)  :: todayis
   character(len=99) :: inputlog
 
+  ! Arrays required to read and store 1D profile from file
   real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
 
 contains
@@ -822,55 +827,13 @@ contains
 
 !===============================================================================
 
-  ! function read_initial_conditions(r_in,index) result(var)
-  !   !
-  !   ! Hacky function adopted from Nico to read in 1D CAK .blk file that is
-  !   ! produced with the CAKwind_1d code
-  !   !
-  !   ! Based on index compare w-array of file with the previous line, exit if
-  !   ! it supersedes the index if the radial array r_in
-  !   !
-  !   ! NOTE1: with this method the last zone from input file is not read in but
-  !   !        such a big deal
-  !   ! NOTE2: Nico's version does also interpolation, but left out here
-  !   ! NOTE3: Ensure that initfile grid has same amount of zones and gridstretch
-  !   !        as the grid that is deployed in the simulation
-  !   !
-  !
-  !   ! Subroutine arguments
-  !   integer, intent(in) :: index
-  !   real(8), intent(in) :: r_in
-  !
-  !   ! Local variables
-  !   real(8) :: var
-  !   real(8) :: w(1:5), w_mo(1:5)
-  !   integer :: ll, nctot, ncells, unit=69
-  !
-  !   ! w-array here also contains the xgrid together with rho,vr,gcak,fd
-  !   w(:) = 0.0d0
-  !
-  !   open(unit, file='cak0021.blk')
-  !   read(unit,*) !> header
-  !   read(unit,*) nctot, ncells
-  !   read(unit,*) !> header
-  !   read(unit,*) w !> first line of data
-  !
-  !   do ll = 1,ncells
-  !     w_mo = w
-  !     read(unit,*) w
-  !     if (w(1) > r_in) exit
-  !   enddo
-  !
-  !   close(unit)
-  !
-  !   var = w_mo(index)
-  !
-  !   ! Sanity check (for now very simple and not robust)
-  !   if (ncells /= domain_nx1) call mpistop('FAILED to read in 1D initfile')
-  !
-  ! end function read_initial_conditions
-
   subroutine read_initial_oned_cak(filename)
+    !
+    ! Read in a relaxed 1D CAK profile stored in a .blk file that is produced
+    ! with the CAKwind_1d code
+    !
+    ! This routine is a modified version from the AMRVAC mod_oneblock module
+    !
 
     ! Subroutine argument
     character(len=*), intent(in) :: filename
@@ -879,15 +842,21 @@ contains
     integer :: i, ncells, unit=69
     real(8) :: tmp,tmp1
 
-    !----------------------------------------
-    ! Root does the reading:
-    !----------------------------------------
+    !======================
+    ! Root does the reading
+    !======================
     if (mype == 0) then
        open(unit,file=filename,status='unknown')
        ! The header information:
        read(unit,*) ! skip
-       read(unit,*) ncells ! no need 2nd, #cells ndim=1 == #cells in ndir=1
+       read(unit,*) ncells ! no need 2nd entry, #cells ndim=1 == #cells in ndir=1
        read(unit,*) ! skip
+
+       ! Sanity check (not so robust)
+       if (ncells /= domain_nx1) then
+         close(unit)
+         call mpistop('Inputfile ncells /= domain_nx1. No interpolation yet.')
+       endif
 
        ! Allocate and read the grid and variables
        allocate(xoneblock(ncells,1))
@@ -903,6 +872,9 @@ contains
 
     call MPI_BARRIER(icomm,ierrmpi)
 
+    !===========================
+    ! Broadcast what mype=0 read
+    !===========================
     if (npe > 1) then
       call MPI_BCAST(ncells,1,MPI_INTEGER,0,icomm,ierrmpi)
 
