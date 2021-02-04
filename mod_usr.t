@@ -113,7 +113,7 @@ module mod_usr
   integer :: my_tmp1, my_tmp2, my_tmp3, my_tmp4, my_tmp5,my_tmp6, my_tmp7
 
   character(len=8)  :: todayis
-  character(len=99) :: inputlog
+  character(len=99) :: inputlog, cakfile
 
   ! Arrays required to read and store 1D profile from file
   real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
@@ -203,7 +203,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, tstat, Wrot
+                          Qbar, tstat, Wrot, cakfile
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -256,8 +256,7 @@ contains
     rkep = Wrot**(-2.0d0/3.0d0)
 
     call make_dimless_vars()
-
-    call read_initial_oned_cak('./cak0021.blk')
+    call read_initial_oned_cak(cakfile)
 
     if (mype == 0) then
       ! Store overview in a log file for easy reference
@@ -822,33 +821,41 @@ contains
     ! Local variables
     integer :: i, ncells, unit=69
     real(8) :: tmp,tmp1
+    logical :: alive
 
     !======================
     ! Root does the reading
     !======================
     if (mype == 0) then
-       open(unit,file=filename,status='unknown')
-       ! The header information:
-       read(unit,*) ! skip
-       read(unit,*) ncells ! no need 2nd entry, #cells ndim=1 == #cells in ndir=1
-       read(unit,*) ! skip
+      inquire(file=filename,exist=alive)
 
-       ! Sanity check (not so robust)
-       if (ncells /= domain_nx1) then
-         close(unit)
-         call mpistop('Inputfile ncells /= domain_nx1. No interpolation yet.')
-       endif
+      if (alive) then
+        open(unit,file=filename,status='unknown')
+      else
+        call mpistop('Input file you want to use cannot be found!')
+      endif
 
-       ! Allocate and read the grid and variables
-       allocate(xoneblock(ncells,1))
-       allocate(woneblock(ncells,1:2))
+      ! The header information:
+      read(unit,*) ! skip
+      read(unit,*) ncells ! no need 2nd entry, #cells ndim=1 == #cells in ndir=1
+      read(unit,*) ! skip
 
-       ! Add the ghostcells to fill up correctly initial conditions later on
-       do i = 1+nghostcells,ncells+nghostcells
-         read(unit,*) xoneblock(i,1),woneblock(i,:),tmp,tmp1
-       enddo
+      ! Sanity check (not so robust)
+      if (ncells /= domain_nx1) then
+        close(unit)
+        call mpistop('Inputfile ncells /= domain_nx1. No interpolation yet.')
+      endif
 
-       close(unit)
+      ! Allocate and read the grid and variables
+      allocate(xoneblock(ncells,1))
+      allocate(woneblock(ncells,1:2))
+
+      ! Add the ghostcells to fill up correctly initial conditions later on
+      do i = 1+nghostcells,ncells+nghostcells
+        read(unit,*) xoneblock(i,1),woneblock(i,:),tmp,tmp1
+      enddo
+
+      close(unit)
     endif
 
     call MPI_BARRIER(icomm,ierrmpi)
