@@ -1,16 +1,14 @@
 !=================================================
 ! Project : 2D isothermal, magnetic CAK wind
 !
-! Aim     : start from a beta law wind to
+! Aim     : start from a 1D relaxed CAK wind to
 !           study wind-magnetosphere interaction
 !
 ! Config  : setup.pl -d=2
 !=================================================
 
 &filelist
-  base_filename  = 'newread/ms'
-  restart_from_file = 'relaxedCAKmodels/zeta_puppis_280x120_rs7_latstretch/cak0100.dat'
-  firstprocess = .true.
+  base_filename  = 'readic_new/ms'
   saveprim       = .true.
   autoconvert    = .true.
   nwauxio        = 2
@@ -28,9 +26,6 @@
 &stoplist
   dtmin    = 1.d-20
   time_max = 1.0d0
-  reset_it   = .true.
-  reset_time = .true.
-  time_init  = 0
 /
 
 &methodlist
@@ -79,10 +74,11 @@
   mstar    = 50.0d0
   rstar    = 20.0d0
   twind    = 4.0d4
-  imag     = 1.0d3     
+  imag     = 1.0d2    
   rhobound = 1.2d-11
   alpha    = 0.65d0
   Qbar     = 2000.0d0
   tstat    = 5.0d5
   Wrot     = 0.0d0
+  cakfile  = 'cak0021.blk'
 /
