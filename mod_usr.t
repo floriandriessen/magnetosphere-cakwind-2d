@@ -255,7 +255,6 @@ contains
     ralf = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
     rkep = Wrot**(-2.0d0/3.0d0)
 
-    ! Make all relevant variables dimensionless
     call make_dimless_vars()
 
     call read_initial_oned_cak('./cak0021.blk')
@@ -353,8 +352,8 @@ contains
 
   subroutine initial_conditions(ixI^L,ixO^L,w,x)
     !
-    ! Initial conditions start from finite-disk beta velocity law with a
-    ! dipole field initialised here or usr_set_B0 when doing Tanaka splitting
+    ! Initial conditions start from 1D relaxed CAK profile and dipole field is
+    ! initialised here or in usr_set_B0 when doing Tanaka splitting
     !
 
     ! Subroutine arguments
@@ -400,24 +399,6 @@ contains
 
     ! Convert hydro vars to conserved to let AMRVAC do computations
     call mhd_to_conserved(ixI^L,ixO^L,w,x)
-
-    ! Initialize the CAK line-force and statistical quantities
-    w(ixO^S,my_gcak)    = 0.0d0
-    w(ixO^S,my_rhoav)   = 0.0d0
-    w(ixO^S,my_rho2av)  = 0.0d0
-    w(ixO^S,my_vrav)    = 0.0d0
-    w(ixO^S,my_vr2av)   = 0.0d0
-    w(ixO^S,my_vpolav)  = 0.0d0
-    w(ixO^S,my_vpol2av) = 0.0d0
-    w(ixO^S,my_rhovrav) = 0.0d0
-
-    w(ixO^S,my_tmp1) = 0.0d0
-    w(ixO^S,my_tmp2) = 0.0d0
-    w(ixO^S,my_tmp3) = 0.0d0
-    w(ixO^S,my_tmp4) = 0.0d0
-    w(ixO^S,my_tmp4) = 0.0d0
-    w(ixO^S,my_tmp5) = 0.0d0
-    w(ixO^S,my_tmp7) = 0.0d0
 
   end subroutine initial_conditions
 
