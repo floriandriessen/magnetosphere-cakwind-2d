@@ -111,6 +111,8 @@ module mod_usr
   character(len=8)  :: todayis
   character(len=99) :: inputlog
 
+  real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
+
 contains
 
   !> This routine should set user methods, and activate the physics module
@@ -251,6 +253,8 @@ contains
     ! Make all relevant variables dimensionless
     call make_dimless_vars()
 
+    call read_initial_oned_cak('./cak0021.blk')
+
     if (mype == 0) then
       ! Store overview in a log file for easy reference
       inputlog = trim(base_filename) // '_param_overview.log'
@@ -353,13 +357,16 @@ contains
     real(8), intent(in)    :: x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
-    ! Local variable
-    integer :: ir
+    ! Local variables
+    integer :: ir, irb
 
-    ! Read in the density and radial velocity from 1D CAK file
-    do ir = ixOmin1,ixOmax1
-      w(ir,:,rho_) = read_initial_conditions(x(ir,nghostcells+1,1),2)
-      w(ir,:,mom(1)) = read_initial_conditions(x(ir,nghostcells+1,1),3)
+    ! Get density and radial velocity from broadcasted 1D CAK profile
+    do ir = ixImin1,ixImax1
+      ! Find correct block index to get correct value
+      irb = minloc(dabs(x(ir,nghostcells,1) - xoneblock(:,1)),1)
+
+      w(ir,:,rho_)   = woneblock(irb,1)
+      w(ir,:,mom(1)) = woneblock(irb,2)
     enddo
 
     ! Set polar velocity field
@@ -815,52 +822,99 @@ contains
 
 !===============================================================================
 
-  function read_initial_conditions(r_in,index) result(var)
-    !
-    ! Hacky function adopted from Nico to read in 1D CAK .blk file that is
-    ! produced with the CAKwind_1d code
-    !
-    ! Based on index compare w-array of file with the previous line, exit if
-    ! it supersedes the index if the radial array r_in
-    !
-    ! NOTE1: with this method the last zone from input file is not read in but
-    !        such a big deal
-    ! NOTE2: Nico's version does also interpolation, but left out here
-    ! NOTE3: Ensure that initfile grid has same amount of zones and gridstretch
-    !        as the grid that is deployed in the simulation
-    !
+  ! function read_initial_conditions(r_in,index) result(var)
+  !   !
+  !   ! Hacky function adopted from Nico to read in 1D CAK .blk file that is
+  !   ! produced with the CAKwind_1d code
+  !   !
+  !   ! Based on index compare w-array of file with the previous line, exit if
+  !   ! it supersedes the index if the radial array r_in
+  !   !
+  !   ! NOTE1: with this method the last zone from input file is not read in but
+  !   !        such a big deal
+  !   ! NOTE2: Nico's version does also interpolation, but left out here
+  !   ! NOTE3: Ensure that initfile grid has same amount of zones and gridstretch
+  !   !        as the grid that is deployed in the simulation
+  !   !
+  !
+  !   ! Subroutine arguments
+  !   integer, intent(in) :: index
+  !   real(8), intent(in) :: r_in
+  !
+  !   ! Local variables
+  !   real(8) :: var
+  !   real(8) :: w(1:5), w_mo(1:5)
+  !   integer :: ll, nctot, ncells, unit=69
+  !
+  !   ! w-array here also contains the xgrid together with rho,vr,gcak,fd
+  !   w(:) = 0.0d0
+  !
+  !   open(unit, file='cak0021.blk')
+  !   read(unit,*) !> header
+  !   read(unit,*) nctot, ncells
+  !   read(unit,*) !> header
+  !   read(unit,*) w !> first line of data
+  !
+  !   do ll = 1,ncells
+  !     w_mo = w
+  !     read(unit,*) w
+  !     if (w(1) > r_in) exit
+  !   enddo
+  !
+  !   close(unit)
+  !
+  !   var = w_mo(index)
+  !
+  !   ! Sanity check (for now very simple and not robust)
+  !   if (ncells /= domain_nx1) call mpistop('FAILED to read in 1D initfile')
+  !
+  ! end function read_initial_conditions
 
-    ! Subroutine arguments
-    integer, intent(in) :: index
-    real(8), intent(in) :: r_in
+  subroutine read_initial_oned_cak(filename)
+
+    ! Subroutine argument
+    character(len=*), intent(in) :: filename
 
     ! Local variables
-    real(8) :: var
-    real(8) :: w(1:5), w_mo(1:5)
-    integer :: ll, nctot, ncells, unit=69
+    integer :: i, ncells, unit=69
+    real(8) :: tmp,tmp1
 
-    ! w-array here also contains the xgrid together with rho,vr,gcak,fd
-    w(:) = 0.0d0
+    !----------------------------------------
+    ! Root does the reading:
+    !----------------------------------------
+    if (mype == 0) then
+       open(unit,file=filename,status='unknown')
+       ! The header information:
+       read(unit,*) ! skip
+       read(unit,*) ncells ! no need 2nd, #cells ndim=1 == #cells in ndir=1
+       read(unit,*) ! skip
 
-    open(unit, file='cak0021.blk')
-    read(unit,*) !> header
-    read(unit,*) nctot, ncells
-    read(unit,*) !> header
-    read(unit,*) w !> first line of data
+       ! Allocate and read the grid and variables
+       allocate(xoneblock(ncells,1))
+       allocate(woneblock(ncells,1:2))
 
-    do ll = 1,ncells
-      w_mo = w
-      read(unit,*) w
-      if (w(1) > r_in) exit
-    enddo
+       ! Add the ghostcells to fill up correctly initial conditions later on
+       do i = 1+nghostcells,ncells+nghostcells
+         read(unit,*) xoneblock(i,1),woneblock(i,:),tmp,tmp1
+       enddo
 
-    close(unit)
+       close(unit)
+    endif
 
-    var = w_mo(index)
+    call MPI_BARRIER(icomm,ierrmpi)
 
-    ! Sanity check (for now very simple and not robust)
-    if (ncells /= domain_nx1) call mpistop('FAILED to read in 1D initfile')
+    if (npe > 1) then
+      call MPI_BCAST(ncells,1,MPI_INTEGER,0,icomm,ierrmpi)
 
-  end function read_initial_conditions
+      if (mype /= 0) then
+        allocate(xoneblock(ncells,1))
+        allocate(woneblock(ncells,1:2))
+      endif
+
+      call MPI_BCAST(xoneblock,ncells*1,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
+      call MPI_BCAST(woneblock,ncells*2,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
+    endif
+
+  end subroutine read_initial_oned_cak
 
 end module mod_usr
