@@ -850,8 +850,7 @@ contains
       allocate(xoneblock(ncells,1))
       allocate(woneblock(ncells,1:2))
 
-      ! Add the ghostcells to fill up correctly initial conditions later on
-      do i = 1+nghostcells,ncells+nghostcells
+      do i = 1,ncells
         read(unit,*) xoneblock(i,1),woneblock(i,:),tmp,tmp1
       enddo
 
