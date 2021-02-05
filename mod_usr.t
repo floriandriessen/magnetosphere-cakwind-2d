@@ -351,8 +351,8 @@ contains
 
   subroutine initial_conditions(ixI^L,ixO^L,w,x)
     !
-    ! Initial conditions start from 1D relaxed CAK profile and dipole field is
-    ! initialised here or in usr_set_B0 when doing Tanaka splitting
+    ! Initial conditions start from spherically symmetric 1D relaxed CAK wind
+    ! and dipole field is set here or in usr_set_B0 when doing Tanaka splitting
     !
 
     ! Subroutine arguments
@@ -366,31 +366,31 @@ contains
     ! Get density and radial velocity from broadcasted 1D CAK profile
     do ir = ixOmin1,ixOmax1
       ! Find correct block index to get correct value
-      irb = minloc(dabs(x(ir,nghostcells,1) - xoneblock(:,1)),1)
+      irb = minloc(abs(x(ir,nghostcells,1) - xoneblock(:,1)),1)
 
       w(ir,:,rho_)   = woneblock(irb,1)
       w(ir,:,mom(1)) = woneblock(irb,2)
     enddo
 
     ! Set polar velocity field
-    w(ixI^S,mom(2)) = 0.0d0
+    w(ixO^S,mom(2)) = 0.0d0
 
     ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
-    w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
+    w(ixO^S,mom(3)) = dvrot/drstar * x(ixO^S,1) * dsin(x(ixO^S,2))
 
     ! Setup magnetic field based on Tanaka splitting or regular
     if (B0field) then
-      w(ixI^S,mag(:)) = 0.0d0
+      w(ixO^S,mag(:)) = 0.0d0
     else
       ! Radial magnetic dipole field
-      w(ixI^S,mag(1)) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
+      w(ixO^S,mag(1)) = dbpole * (drstar/x(ixO^S,1))**3.0d0 * dcos(x(ixO^S,2))
 
       ! Polar magnetic dipole field
-      w(ixI^S,mag(2)) = 0.5d0 * dbpole &
-                        * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
+      w(ixO^S,mag(2)) = 0.5d0 * dbpole &
+                        * (drstar/x(ixO^S,1))**3.0d0 * dsin(x(ixO^S,2))
 
       ! Azimuthal magnetic field
-      w(ixI^S,mag(3)) = 0.0d0
+      w(ixO^S,mag(3)) = 0.0d0
     endif
 
     ! If using Dedner+(2002) divergence cleaning
