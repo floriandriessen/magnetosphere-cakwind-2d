@@ -60,6 +60,10 @@
 !     beta law with Bfield (c.q. Oct 2019); adds more flexibility in multi-d
 !   > removed accordingly the 'iprob' option
 !
+! (February 2021) -- Flo
+!   > starting from beta law in high confinement leads to crash, removed mods
+!     from January; instead now 1D relaxed CAK read in
+!
 !===============================================================================
 
 module mod_usr
@@ -109,7 +113,10 @@ module mod_usr
   integer :: my_tmp1, my_tmp2, my_tmp3, my_tmp4, my_tmp5,my_tmp6, my_tmp7
 
   character(len=8)  :: todayis
-  character(len=99) :: inputlog
+  character(len=99) :: inputlog, cakfile
+
+  ! Arrays required to read and store 1D profile from file
+  real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
 
 contains
 
@@ -196,7 +203,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, tstat, Wrot
+                          Qbar, tstat, Wrot, cakfile
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -248,8 +255,8 @@ contains
     ralf = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
     rkep = Wrot**(-2.0d0/3.0d0)
 
-    ! Make all relevant variables dimensionless
     call make_dimless_vars()
+    call read_initial_oned_cak(cakfile)
 
     if (mype == 0) then
       ! Store overview in a log file for easy reference
@@ -344,8 +351,8 @@ contains
 
   subroutine initial_conditions(ixI^L,ixO^L,w,x)
     !
-    ! Initial conditions start from finite-disk beta velocity law with a
-    ! dipole field initialised here or usr_set_B0 when doing Tanaka splitting
+    ! Initial conditions start from spherically symmetric 1D relaxed CAK wind
+    ! and dipole field is set here or in usr_set_B0 when doing Tanaka splitting
     !
 
     ! Subroutine arguments
@@ -354,27 +361,36 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
-    real(8)            :: sfac
-    real(8), parameter :: beta=0.8d0
+    integer :: ir, irb
 
-    call mhd_to_primitive(ixI^L,ixO^L,w,x)
+    ! Get density and radial velocity from broadcasted 1D CAK profile
+    do ir = ixOmin1,ixOmax1
+      ! Find correct block index to get correct value
+      irb = minloc(abs(x(ir,nghostcells,1) - xoneblock(:,1)),1)
+
+      w(ir,:,rho_)   = woneblock(irb,1)
+      w(ir,:,mom(1)) = woneblock(irb,2)
+    enddo
+
+    ! Set polar velocity field
+    w(ixO^S,mom(2)) = 0.0d0
 
     ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
-    w(ixI^S,mom(3)) = dvrot * (x(ixI^S,1)/drstar) * dsin(x(ixI^S,2))
+    w(ixO^S,mom(3)) = dvrot/drstar * x(ixO^S,1) * dsin(x(ixO^S,2))
 
     ! Setup magnetic field based on Tanaka splitting or regular
     if (B0field) then
-      w(ixI^S,mag(:)) = 0.0d0
+      w(ixO^S,mag(:)) = 0.0d0
     else
       ! Radial magnetic dipole field
-      w(ixI^S,mag(1)) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
+      w(ixO^S,mag(1)) = dbpole * (drstar/x(ixO^S,1))**3.0d0 * dcos(x(ixO^S,2))
 
       ! Polar magnetic dipole field
-      w(ixI^S,mag(2)) = 0.5d0 * dbpole &
-                        * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
+      w(ixO^S,mag(2)) = 0.5d0 * dbpole &
+                        * (drstar/x(ixO^S,1))**3.0d0 * dsin(x(ixO^S,2))
 
       ! Azimuthal magnetic field
-      w(ixI^S,mag(3)) = 0.0d0
+      w(ixO^S,mag(3)) = 0.0d0
     endif
 
     ! If using Dedner+(2002) divergence cleaning
@@ -382,24 +398,6 @@ contains
 
     ! Convert hydro vars to conserved to let AMRVAC do computations
     call mhd_to_conserved(ixI^L,ixO^L,w,x)
-
-    ! Initialize the CAK line-force and statistical quantities
-    w(ixO^S,my_gcak)    = 0.0d0
-    w(ixO^S,my_rhoav)   = 0.0d0
-    w(ixO^S,my_rho2av)  = 0.0d0
-    w(ixO^S,my_vrav)    = 0.0d0
-    w(ixO^S,my_vr2av)   = 0.0d0
-    w(ixO^S,my_vpolav)  = 0.0d0
-    w(ixO^S,my_vpol2av) = 0.0d0
-    w(ixO^S,my_rhovrav) = 0.0d0
-
-    w(ixO^S,my_tmp1) = 0.0d0
-    w(ixO^S,my_tmp2) = 0.0d0
-    w(ixO^S,my_tmp3) = 0.0d0
-    w(ixO^S,my_tmp4) = 0.0d0
-    w(ixO^S,my_tmp4) = 0.0d0
-    w(ixO^S,my_tmp5) = 0.0d0
-    w(ixO^S,my_tmp7) = 0.0d0
 
   end subroutine initial_conditions
 
@@ -541,13 +539,8 @@ contains
     ! Total gradient
     dvdr(ixO^S) = dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S)
 
-    if (etastar < 1.0d0) then
-      ! Non-confined; make gradient > 0 to avoid stagnant flow
-      dvdr(ixO^S) = abs(dvdr(ixO^S))
-    else
-      ! In magnetosphere, we actually require fallback)
-      dvdr(ixO^S) = max(dvdr(ixO^S), 0.0d0)
-    endif
+    ! In magnetosphere, we actually require fallback)
+    dvdr(ixO^S) = max(dvdr(ixO^S), 0.0d0)
 
     ! Finite disk factor parameterisation (Owocki & Puls 1996)
     beta_fd(ixO^S) = ( 1.0d0 - vr(ixO^S)/(x(ixO^S,1) * dvdr(ixO^S)) ) &
@@ -811,5 +804,76 @@ contains
     wB0(ixI^S,3) = 0.0d0
 
   end subroutine make_dipoleboy
+
+!===============================================================================
+
+  subroutine read_initial_oned_cak(filename)
+    !
+    ! Read in a relaxed 1D CAK profile stored in a .blk file that is produced
+    ! with the CAKwind_1d code
+    !
+    ! This routine is a modified version from the AMRVAC mod_oneblock module
+    !
+
+    ! Subroutine argument
+    character(len=*), intent(in) :: filename
+
+    ! Local variables
+    integer :: i, ncells, unit=69
+    real(8) :: tmp,tmp1
+    logical :: alive
+
+    !======================
+    ! Root does the reading
+    !======================
+    if (mype == 0) then
+      inquire(file=filename,exist=alive)
+
+      if (alive) then
+        open(unit,file=filename,status='unknown')
+      else
+        call mpistop('Input file you want to use cannot be found!')
+      endif
+
+      ! The header information:
+      read(unit,*) ! skip
+      read(unit,*) ncells ! no need 2nd entry, #cells ndim=1 == #cells in ndir=1
+      read(unit,*) ! skip
+
+      ! Sanity check (not so robust)
+      if (ncells /= domain_nx1) then
+        close(unit)
+        call mpistop('Inputfile ncells /= domain_nx1. No interpolation yet.')
+      endif
+
+      ! Allocate and read the grid and variables
+      allocate(xoneblock(ncells,1))
+      allocate(woneblock(ncells,1:2))
+
+      do i = 1,ncells
+        read(unit,*) xoneblock(i,1),woneblock(i,:),tmp,tmp1
+      enddo
+
+      close(unit)
+    endif
+
+    call MPI_BARRIER(icomm,ierrmpi)
+
+    !===========================
+    ! Broadcast what mype=0 read
+    !===========================
+    if (npe > 1) then
+      call MPI_BCAST(ncells,1,MPI_INTEGER,0,icomm,ierrmpi)
+
+      if (mype /= 0) then
+        allocate(xoneblock(ncells,1))
+        allocate(woneblock(ncells,1:2))
+      endif
+
+      call MPI_BCAST(xoneblock,ncells*1,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
+      call MPI_BCAST(woneblock,ncells*2,MPI_DOUBLE_PRECISION,0,icomm,ierrmpi)
+    endif
+
+  end subroutine read_initial_oned_cak
 
 end module mod_usr
