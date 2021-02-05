@@ -8,7 +8,7 @@
 !=================================================
 
 &filelist
-  base_filename  = 'readic_new/ms'
+  base_filename  = 'read_ic/ms'
   saveprim       = .true.
   autoconvert    = .true.
   nwauxio        = 2
@@ -70,6 +70,7 @@
 /
 
 &star_list
+  cakfile  = 'cak0021.blk'
   lstar    = 8.0d5
   mstar    = 50.0d0
   rstar    = 20.0d0
@@ -80,5 +81,4 @@
   Qbar     = 2000.0d0
   tstat    = 5.0d5
   Wrot     = 0.0d0
-  cakfile  = 'cak0021.blk'
 /
