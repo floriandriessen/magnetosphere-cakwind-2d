@@ -150,6 +150,8 @@ contains
     ! Special boundary conditions
     usr_special_bc => special_bound
 
+    usr_gravity => effective_gravity
+
     ! CAK line-force computation
     usr_source => CAK_source
 
@@ -579,14 +581,17 @@ contains
     w(ixO^S,my_gcak) = gcak(ixO^S)
 
     ! Effective gravity computation
-    geff(ixO^S) = - dGgrav * dmstar * (1.0d0 - dgammae)/x(ixO^S,1)**2.0d0
+    !geff(ixO^S) = - dGgrav * dmstar * (1.0d0 - dgammae)/x(ixO^S,1)**2.0d0
 
     ! Update conservative vars: w = w + qdt*gsource
-    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) &
-                      + qdt * (gcak(ixO^S) + geff(ixO^S))*wCT(ixO^S,rho_)
+    ! w(ixO^S,mom(1)) = w(ixO^S,mom(1)) &
+    !                   + qdt * (gcak(ixO^S) + geff(ixO^S))*wCT(ixO^S,rho_)
+
+    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S) * wCT(ixO^S,rho_)
 
     ! Define a new time-step corrected for continuum and line-acceleration
-    timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
+    !timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
+    timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / gcak(ixO^S)
     new_timestep   = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
 
   end subroutine CAK_source
@@ -609,6 +614,27 @@ contains
     endif
 
   end subroutine special_dt
+
+!===============================================================================
+
+  subroutine effective_gravity(ixI^L,ixO^L,wCT,x,gravity_field)
+    !
+    ! Combine stellar gravity and continuum electron scattering into an
+    ! effective gravity using Eddington's gamma
+    !
+
+    ! Subroutine arguments
+    integer, intent(in)  :: ixI^L, ixO^L
+    real(8), intent(in)  :: x(ixI^S,1:ndim)
+    real(8), intent(in)  :: wCT(ixI^S,1:nw)
+    real(8), intent(out) :: gravity_field(ixI^S,ndim)
+
+    gravity_field(ixO^S,:) = 0.0d0
+
+    ! Only in radial direction
+    gravity_field(ixO^S,1) = -dGgrav*dmstar * (1.0d0-dgammae)/x(ixO^S,1)**2.0d0
+
+  end subroutine effective_gravity
 
 !===============================================================================
 
