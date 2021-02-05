@@ -591,8 +591,8 @@ contains
 
     ! Define a new time-step corrected for continuum and line-acceleration
     !timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
-    timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / gcak(ixO^S)
-    new_timestep   = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
+    !timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / gcak(ixO^S)
+    !new_timestep   = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
 
   end subroutine CAK_source
 
@@ -609,10 +609,19 @@ contains
     real(8), intent(in)    :: w(ixI^S,1:nw)
     real(8), intent(inout) :: dtnew
 
+    ! Local variables
+    real(8) :: tdum(ixO^S), dt_cak
+
+    ! Get dt from line force that is saved in the w-array in nwextra slot
+    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak)) )
+    dt_cak      = courantpar * minval(tdum(ixO^S))
+
     if (it >= 1) then
-      dtnew = new_timestep
+      !if (mype==0) print*,dt_cak,dtnew
+      dtnew = min(dtnew,dt_cak)
     endif
 
+    !if (it>100) call mpistop('testing')
   end subroutine special_dt
 
 !===============================================================================
