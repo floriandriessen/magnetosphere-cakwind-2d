@@ -364,7 +364,7 @@ contains
     integer :: ir, irb
 
     ! Get density and radial velocity from broadcasted 1D CAK profile
-    do ir = ixImin1,ixImax1
+    do ir = ixOmin1,ixOmax1
       ! Find correct block index to get correct value
       irb = minloc(dabs(x(ir,nghostcells,1) - xoneblock(:,1)),1)
 
