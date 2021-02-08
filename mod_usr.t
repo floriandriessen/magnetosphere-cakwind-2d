@@ -637,25 +637,10 @@ contains
     ! where <X> is the average of variable X and i','i-1' are the current and
     ! previous time step respectively
     !
-    ! This routine is called after each iteration BUT does only save things
-    ! every 'dtsave_dat' time specified in the .par file
-    !
-    ! To allow the system to relax we set a 'tstat' time in the .par file after
-    ! which we start the actual computation of relevant <X> quantities, if this
-    ! condition is not met we just assign 0 to the <X> quantities (initialized)
-    ! The first time the condition is full-filled we save the current P state
-    ! into a temporary array to be used in the next iteration for weighing
-    !
-    ! Due to the nature of how this routine works in AMRVAC after each
-    ! computation of <X> we have to normalize with the appropriate time-weight
-    ! 'tnorm' (so that it is included when saving output) but in the next
-    ! iteration we have to 'un-normalize' it back in time 'tnorm - dt' to
-    ! compute the current timestep <X> again
-    !
 
     ! Subroutine arguments
-    integer, intent(in)    :: igrid,level,ixI^L,ixO^L
-    real(8), intent(in)    :: qt,x(ixI^S,1:ndim)
+    integer, intent(in)    :: igrid, level, ixI^L, ixO^L
+    real(8), intent(in)    :: qt, x(ixI^S,1:ndim)
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
@@ -663,13 +648,10 @@ contains
     real(8) :: tnorm
 
     if (global_time >= dtstat) then
-      !
-      ! Convert conservative variables to primitives (back conversion at end)
-      ! This means that mom(X) below is now the velocity in direction X
-      !
+
       call mhd_to_primitive(ixI^L,ixO^L,w,x)
 
-      if (first_time .and. (.not. resume_previous_run)) then
+      if (first_time) then
         w(ixO^S,my_tmp1) = w(ixO^S,rho_)
         w(ixO^S,my_tmp2) = w(ixO^S,rho_)**2.0d0
         w(ixO^S,my_tmp3) = w(ixO^S,mom(1))
@@ -683,39 +665,47 @@ contains
         tnorm = global_time - dtstat
 
         ! Average density
-        w(ixO^S,my_rhoav) = (w(ixO^S,my_rhoav)*(tnorm-dt) &
-                                 + 0.5*(w(ixO^S,rho_) + w(ixO^S,my_tmp1))*dt)/tnorm
+        w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)*(tnorm-dt) &
+                            + 0.5d0*dt * (w(ixO^S,rho_) + w(ixO^S,my_tmp1))
+        w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)/tnorm
         w(ixO^S,my_tmp1)  = w(ixO^S,rho_)
 
         ! Average density squared
-        w(ixO^S,my_rho2av) = (w(ixO^S,my_rho2av)*(tnorm-dt) &
-                            + 0.5*(w(ixO^S,rho_)**2.0d0 + w(ixO^S,my_tmp2))*dt)/tnorm
+        w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)*(tnorm-dt) &
+                             + 0.5d0*dt * (w(ixO^S,rho_)**2.0d0 + w(ixO^S,my_tmp2))
+        w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)/tnorm
         w(ixO^S,my_tmp2)   = w(ixO^S,rho_)**2.0d0
 
         ! Average radial velocity
-        w(ixO^S,my_vrav) = (w(ixO^S,my_vrav)*(tnorm-dt) &
-                           + 0.5*(w(ixO^S,mom(1)) + w(ixO^S,my_tmp3))*dt)/tnorm
-        w(ixO^S,my_tmp3) = w(ixO^S,mom(1))
+        w(ixO^S,my_vrav)  = w(ixO^S,my_vrav)*(tnorm-dt) &
+                            + 0.5d0*dt * (w(ixO^S,mom(1)) + w(ixO^S,my_tmp3))
+        w(ixO^S,my_vrav)  = w(ixO^S,my_vrav)/tnorm
+        w(ixO^S,my_tmp3)  = w(ixO^S,mom(1))
 
         ! Average radial velocity squared
-        w(ixO^S,my_vr2av) = (w(ixO^S,my_vr2av)*(tnorm-dt) &
-                           + 0.5*(w(ixO^S,mom(1))**2.0d0 + w(ixO^S,my_tmp4))*dt)/tnorm
-        w(ixO^S,my_tmp4) = w(ixO^S,mom(1))**2.0d0
+        w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)*(tnorm-dt) &
+                           + 0.5d0*dt * (w(ixO^S,mom(1))**2.0d0 + w(ixO^S,my_tmp4))
+        w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)/tnorm
+        w(ixO^S,my_tmp4)  = w(ixO^S,mom(1))**2.0d0
 
         ! Average radial momentum density (correlation density-velocity)
-        w(ixO^S,my_rhovrav) = (w(ixO^S,my_rhovrav)*(tnorm-dt) &
-                             + 0.5*(w(ixO^S,rho_) * w(ixO^S,mom(1)) + w(ixO^S,my_tmp5))*dt)/tnorm
-        w(ixO^S,my_tmp5) = w(ixO^S,rho_) * w(ixO^S,mom(1))
+        w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)*(tnorm-dt) &
+                              + 0.5d0*dt                    &
+                              * (w(ixO^S,rho_) * w(ixO^S,mom(1)) + w(ixO^S,my_tmp5))
+        w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)/tnorm
+        w(ixO^S,my_tmp5)    = w(ixO^S,rho_) * w(ixO^S,mom(1))
 
         ! Average polar velocity
-        w(ixO^S,my_vpolav) = (w(ixO^S,my_vpolav)*(tnorm-dt) &
-                           + 0.5*(w(ixO^S,mom(2)) + w(ixO^S,my_tmp6))*dt)/tnorm
-        w(ixO^S,my_tmp6) = w(ixO^S,mom(2))
+        w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)*(tnorm-dt) &
+                             + 0.5d0*dt * (w(ixO^S,mom(2)) + w(ixO^S,my_tmp6))
+        w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)/tnorm
+        w(ixO^S,my_tmp6)   = w(ixO^S,mom(2))
 
         ! Average polar velocity squared
-        w(ixO^S,my_vpol2av)  = (w(ixO^S,my_vpol2av)*(tnorm-dt) &
-                              + 0.5*(w(ixO^S,mom(2))**2.0d0 + w(ixO^S,my_tmp7))*dt)/tnorm
-        w(ixO^S,my_tmp7) = w(ixO^S,mom(2))**2.0d0
+        w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)*(tnorm-dt) &
+                              + 0.5d0*dt * (w(ixO^S,mom(2))**2.0d0 + w(ixO^S,my_tmp7))
+        w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)/tnorm
+        w(ixO^S,my_tmp7)    = w(ixO^S,mom(2))**2.0d0
 
       endif
 

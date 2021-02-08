@@ -101,6 +101,17 @@ Additionally, a `star_list` is specified in the .par file containing variables s
 | tstat    | time to start to compute statistical averages (sec)               |
 | Wrot     | ratio of equatorial rotational velocity to orbital (critical)  velocity |
 
+### More info on the statistics
+
+The `tstat` should generally be set to a time where the wind reaches a time and state where initial perturbations have left the grid. If not, the statistical averaging will contain remnants from these perturbations. 
+
+The computation of statistics is done in the `compute_stats` routine. This routine is called at the **start** of the iteration and the w-array is extended with nwextra variables as defined in the code. **Note** that although the routine is called each iteration, the actual values are only printed every `dtsave_dat`. If wished for, it is straightforward to here also include new quantities of interest.
+
+The first time the routine is accessed the current hydro state is saved into a temporary array to be used in the next iteration for weighing. These temporary variables are also in the w-array slots. Because they are useless in the output file we specifically leave these out with the `w_write` array in the `&filelist` of the .par file. 
+
+After each computation of <X> we have to normalise with the appropriate time-weight `tnorm` but in the next iteration we have to 'un-normalise' it back in time `tnorm - dt` to compute the current timestep <X> again.
+
+
 ## Notice
 
 Tested with AMRVAC version 2.2 (Fall 2019).
