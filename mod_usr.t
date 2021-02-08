@@ -156,7 +156,7 @@ contains
     usr_gravity => effective_gravity
 
     ! CAK line-force computation
-    usr_source => CAK_source
+    usr_source => line_force
 
     ! Adjusted timestep to account for total radiation force
     usr_get_dt => special_dt
@@ -489,7 +489,7 @@ contains
 
 !===============================================================================
 
-  subroutine CAK_source(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
+  subroutine line_force(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
     !
     ! Compute the analytical CAK line force using Gayley's formalism
     !
@@ -501,12 +501,11 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
-    real(8) :: dvdr_up(ixI^S), dvdr_down(ixI^S), dvdr_cent(ixI^S), dvdr(ixI^S)
-    real(8) :: gcak(ixI^S), geff(ixI^S)
     real(8) :: vr(ixI^S), rho(ixI^S)
-    real(8) :: beta_fd(ixI^S), fdfac(ixI^S)
+    real(8) :: dvdr_up(ixO^S), dvdr_down(ixO^S), dvdr_cent(ixO^S), dvdr(ixO^S)
+    real(8) :: gcak(ixO^S), beta_fd(ixO^S), fdfac(ixO^S)
     real(8) :: fac, fac1, fac2
-    integer :: i
+    integer :: jx^L, hx^L
 
     !========================================================================
     ! Convert to primitives
@@ -519,25 +518,25 @@ contains
 
     !========================================================================
 
+    ! Index +1 (j) and index -1 (h) in radial direction; kr(dir,dim)=1, dir=dim
+    jx^L=ixO^L+kr(1,^D);
+    hx^L=ixO^L-kr(1,^D);
+
     ! Get dv/dr on non-uniform grid according to Sundqvist & Veronis (1970)
-    do i = ixOmin1,ixOmax1
-      ! Forward difference
-      dvdr_up(i^%1ixO^S) = (x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * vr(i+1^%1ixO^S) &
-                          / ((x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i-1^%1ixO^S,1)))
+    ! Forward difference
+    dvdr_up(ixO^S) = (x(ixO^S,1) - x(hx^S,1)) * vr(jx^S) &
+                     / ((x(jx^S,1) - x(ixO^S,1)) * (x(jx^S,1) - x(hx^S,1)))
 
-      ! Backward difference
-      dvdr_down(i^%1ixO^S) = -(x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)) * vr(i-1^%1ixO^S) &
-                          / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i-1^%1ixO^S,1)))
+    ! Backward difference
+    dvdr_down(ixO^S) = -(x(jx^S,1) - x(ixO^S,1)) * vr(hx^S) &
+                        / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(hx^S,1)))
 
-      ! Central difference
-      dvdr_cent(i^%1ixO^S)  = (x(i+1^%1ixO^S,1) + x(i-1^%1ixO^S,1) - 2.0d0*x(i^%1ixO^S,1)) * vr(i^%1ixO^S) &
-                          / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)))
-    enddo
+    ! Central difference
+    dvdr_cent(ixO^S) = (x(jx^S,1) + x(hx^S,1) - 2.0d0*x(ixO^S,1)) * vr(ixO^S) &
+                       / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(ixO^S,1)))
 
-    ! Total gradient
+    ! Total gradient with fallback requirement check
     dvdr(ixO^S) = dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S)
-
-    ! In magnetosphere, we actually require fallback)
     dvdr(ixO^S) = max(dvdr(ixO^S), 0.0d0)
 
     ! Finite disk factor parameterisation (Owocki & Puls 1996)
@@ -577,7 +576,7 @@ contains
     ! Update conservative vars: w = w + qdt*gsource
     w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S) * wCT(ixO^S,rho_)
 
-  end subroutine CAK_source
+  end subroutine line_force
 
 !===============================================================================
 
