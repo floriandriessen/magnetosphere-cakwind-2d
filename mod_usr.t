@@ -77,46 +77,35 @@ module mod_usr
   implicit none
 
   ! The usual suspects
-  real(8), parameter :: msun=1.989d33, lsun=3.827d33, rsun=6.96d10, &
-                        Ggrav=6.67d-8, kappae=0.34d0
-
-  ! Stellar parameters: luminosity, mass, radius, surface density, eff. temp.,
-  !                     polar magnetic field, wind magnetic confinement
-  !                     parameter, Alfven + Kepler radius, W-parameter,
-  !                     equatorial rotation + critical rotation speed
-  real(8) :: lstar, mstar, rstar, rhobound, twind, bpole, etastar, ralf, rkep, &
-             Wrot, vrot, vrotc
-
-  ! To select setup based on given bpole or etastar value
-  real(8) :: imag
+  real(8), parameter :: msun=1.989d33, lsun=3.827d33, rsun=6.96d10
+  real(8), parameter :: Ggrav=6.67d-8, kappae=0.34d0
 
   ! Unit quantities that are handy: gravitational constant, luminosity, mass
   real(8) :: my_unit_ggrav, my_unit_lum, my_unit_mass
 
-  ! log(g), eff. log(g) + scale height, mean mol. weight
-  real(8) :: logg, logge, heff, mumol
+  ! Extra input parameters:
+  real(8)           :: lstar, mstar, rstar, rhobound, twind, imag, alpha, Qbar
+  real(8)           :: tstat, Wrot
+  character(len=99) :: cakfile
 
-  !
-  ! Wind parameters: CAK alpha, Gayley Qbar, Eddington gamma, escape speed,
-  !                  CAK + fd mass-loss rate, terminal wind speed, sound speed
-  real(8) :: alpha, Qbar, gammae, vesc, mdot, mdotfd, vinf, asound
-
-  ! Time-step accounting radiation force, time to start statistical computation
-  real(8) :: new_timestep, tstat
+  ! Additionally useful stellar and wind parameters:
+  !   Eddington gamma, escape speed, CAK + fd mass-loss rate, terminal wind
+  !   speed, sound speed, log(g), eff. log(g), scale height, mean mol. weight,
+  !   polar magnetic field, wind magnetic confinement parameter, Alfven +
+  !   Kepler radius, equatorial rotation + critical rotation speed
+  real(8) :: gammae, vesc, mdot, mdotfd, vinf, asound, logg, logge, heff
+  real(8) :: mumol, bpole, etastar, ralf, rkep, vrot, vrotc
 
   ! Dimensionless variables of relevant variables above
-  real(8) :: dlstar, dmstar, drstar, dbpole, drhobound, dtwind, dkappae, &
-             dvesc, dvinf, dmdot, dasound, dclight, dGgrav, dgammae, detaconf, &
-             dtstat, dvrot
+  real(8) :: dlstar, dmstar, drstar, dbpole, drhobound, dtwind, dkappae
+  real(8) :: dvesc, dvinf, dmdot, dasound, dclight, dGgrav, dgammae, detaconf
+  real(8) :: dtstat, dvrot
 
   ! Additional names for wind and statistical variables
   integer :: my_gcak
   integer :: my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav, my_vpolav, &
              my_vpol2av
   integer :: my_tmp1, my_tmp2, my_tmp3, my_tmp4, my_tmp5,my_tmp6, my_tmp7
-
-  character(len=8)  :: todayis
-  character(len=99) :: inputlog, cakfile
 
   ! Arrays required to read and store 1D profile from file
   real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
@@ -126,10 +115,7 @@ contains
   !> This routine should set user methods, and activate the physics module
   subroutine usr_init()
 
-    ! Choose coordinate system: 2.5D spherical
     call set_coordinate_system("spherical_2.5D")
-
-    ! Read in the user-defined star_list (not read in by AMRVAC)
     call usr_params_read(par_files)
 
     !
@@ -141,41 +127,20 @@ contains
     unit_temperature   = twind                                      ! K
     unit_numberdensity = rhobound/((1.d0+4.d0*He_abundance)*mp_cgs) ! g cm^-3
 
-    ! Invoke the physics module
     call MHD_activate()
 
-    ! Initialize user (global) quantities after initializing AMRVAC
     usr_set_parameters => initglobaldata_usr
+    usr_init_one_grid  => initial_conditions
+    usr_special_bc     => special_bound
+    usr_gravity        => effective_gravity
+    usr_source         => line_force
+    usr_get_dt         => special_dt
+    usr_process_grid   => compute_stats
+    usr_aux_output     => set_extravar_output
+    usr_add_aux_names  => set_extravarnames_output
+    usr_set_B0         => make_dipoleboy
 
-    ! Set up initial conditions
-    usr_init_one_grid => initial_conditions
-
-    ! Special boundary conditions
-    usr_special_bc => special_bound
-
-    usr_gravity => effective_gravity
-
-    ! CAK line-force computation
-    usr_source => line_force
-
-    ! Adjusted timestep to account for total radiation force
-    usr_get_dt => special_dt
-
-    ! Every iteration retrieve global grid info and perform operations on it
-    ! to make time-averaged statistical quantities of wind
-    usr_process_grid => compute_stats
-
-    ! Compute and include Alfven speed and divergence of Bfield as output
-    usr_aux_output    => set_extravar_output
-    usr_add_aux_names => set_extravarnames_output
-
-    ! Background dipole field if using Tanaka field splitting
-    usr_set_B0 => make_dipoleboy
-
-    ! User source variables to store in output
-    my_gcak = var_set_extravar("gcak", "gcak")
-
-    ! Statistical quantities and temporary storage variables
+    my_gcak    = var_set_extravar("gcak", "gcak")
     my_rhoav   = var_set_extravar("rho_av", "rho_av")
     my_rho2av  = var_set_extravar("rho2_av", "rho2_av")
     my_vrav    = var_set_extravar("vrad_av", "vrad_av")
@@ -229,20 +194,22 @@ contains
     !
     ! Compute some quantities of interest (in CGS) before making unitless
     !
+    character(len=8)  :: todayis
+    character(len=99) :: inputlog
 
     ! Stellar structure
     gammae = kappae * lstar/(4.d0*dpi * Ggrav * mstar * const_c)
     logg   = log10(Ggrav * mstar/rstar**2.0d0)
-    logge  = logg * (1.0d0 - gammae)**0.5d0
+    logge  = logg  + log10(1.0d0 - gammae)
     mumol  = (1.0d0 + 4.0d0*He_abundance)/(2.0d0 + 3.0d0*He_abundance)
-    asound = dsqrt(twind * kB_cgs/(mumol * mp_cgs))
+    asound = sqrt(twind * kB_cgs/(mumol * mp_cgs))
     heff   = asound**2.0d0 / 10.0d0**logge
-    vrotc  = dsqrt(Ggrav * mstar*(1.0d0 - gammae)/rstar)
+    vrotc  = sqrt(Ggrav * mstar*(1.0d0 - gammae)/rstar)
     vrot   = vrotc * Wrot
 
     ! Wind quantities in CAK theory
-    vesc    = (2.0d0 * Ggrav * mstar*(1.0d0 - gammae)/rstar)**0.5d0
-    vinf    = vesc * (alpha/(1.0d0 - alpha))**0.5d0
+    vesc    = sqrt(2.0d0 * Ggrav * mstar*(1.0d0 - gammae)/rstar)
+    vinf    = vesc * sqrt(alpha/(1.0d0 - alpha))
     mdot    = lstar/const_c**2.0d0 * alpha/(1.0d0 - alpha) &
                * (Qbar * gammae/(1.0d0 - gammae))**((1.0d0 - alpha)/alpha)
     mdotfd  = mdot/(1.0d0 + alpha)**(1.0d0/alpha)
@@ -253,7 +220,7 @@ contains
       etastar = ((bpole/2.0d0)**2.0d0 * rstar**2.0d0)/(mdot * vinf)
     else
       etastar = -imag
-      bpole   = 2.0d0 * (mdot * vinf * etastar / rstar**2.0d0)**0.5d0
+      bpole   = 2.0d0 * sqrt(mdot * vinf * etastar / rstar**2.0d0)
     endif
 
     ! Compute Alfven and Kepler radius
@@ -377,31 +344,25 @@ contains
       w(ir,:,mom(1)) = woneblock(irb,2)
     enddo
 
-    ! Set polar velocity field
+    ! No polar velocity, in azimuth rigid rotation for full grid (stabilizing)
     w(ixO^S,mom(2)) = 0.0d0
+    w(ixO^S,mom(3)) = dvrot/drstar * x(ixO^S,1) * sin(x(ixO^S,2))
 
-    ! Set the azimuthal velocity field to rigid for full grid (stabilizing)
-    w(ixO^S,mom(3)) = dvrot/drstar * x(ixO^S,1) * dsin(x(ixO^S,2))
-
-    ! Setup magnetic field based on Tanaka splitting or regular
+    ! Setup dipole magnetic field based on Tanaka splitting or regular
     if (B0field) then
       w(ixO^S,mag(:)) = 0.0d0
     else
-      ! Radial magnetic dipole field
-      w(ixO^S,mag(1)) = dbpole * (drstar/x(ixO^S,1))**3.0d0 * dcos(x(ixO^S,2))
+      w(ixO^S,mag(1)) = dbpole * (drstar/x(ixO^S,1))**3.0d0 * cos(x(ixO^S,2))
 
-      ! Polar magnetic dipole field
       w(ixO^S,mag(2)) = 0.5d0 * dbpole &
-                        * (drstar/x(ixO^S,1))**3.0d0 * dsin(x(ixO^S,2))
+                        * (drstar/x(ixO^S,1))**3.0d0 * sin(x(ixO^S,2))
 
-      ! Azimuthal magnetic field
       w(ixO^S,mag(3)) = 0.0d0
     endif
 
     ! If using Dedner+(2002) divergence cleaning
     if (mhd_glm) w(ixO^S,psi_) = 0.0d0
 
-    ! Convert hydro vars to conserved to let AMRVAC do computations
     call mhd_to_conserved(ixI^L,ixO^L,w,x)
 
   end subroutine initial_conditions
@@ -424,7 +385,6 @@ contains
     select case (iB)
     case(1)
 
-      ! Convert hydro vars to primitive
       call mhd_to_primitive(ixI^L,ixI^L,w,x)
 
       w(ixB^S,rho_) = drhobound
@@ -441,19 +401,14 @@ contains
 
       enddo
 
-      ! Prohibit ghosts to be supersonic, and avoid overloading
+      ! Prohibit radial velocity ghosts to be supersonic, and avoid overloading
       w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
       w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
 
-      ! Polar velocity field
       w(ixB^S,mom(2)) = 0.0d0
+      w(ixB^S,mom(3)) = dvrot * sin(x(ixB^S,2))
 
-      ! Azimuthal velocity field
-      w(ixB^S,mom(3)) = dvrot * dsin(x(ixB^S,2))
-
-      ! Radial magnetic dipole field
-      w(ixB^S,mag(1)) = dbpole * dcos(x(ixB^S,2))
-
+      w(ixB^S,mag(1)) = dbpole * cos(x(ixB^S,2))
       !
       ! Polar magnetic dipole field
       !   > Magnetic confinement: do linear extrapolation
@@ -469,7 +424,6 @@ contains
         w(ixB^S,mag(2)) = 0.0d0
       endif
 
-      ! Azimuthal magnetic field
       w(ixB^S,mag(3)) = 0.0d0
 
       ! Tanaka split: subtract background field to get deviated boundary field
@@ -478,7 +432,6 @@ contains
       ! When using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
-      ! Convert hydro vars back to conserved to let AMRVAC do computations
       call mhd_to_conserved(ixI^L,ixI^L,w,x)
 
     case default
@@ -729,8 +682,7 @@ contains
 
   subroutine make_dimless_vars()
     !
-    ! Normalize quantities in use to unit quantities defined and computed
-    ! These quantities are actually used by AMRVAC in its computations!
+    ! Normalise relevant quantities to unit quantities to be used in the code
     !
 
     ! From the AMRVAC unit vars compute some extra relevant for us
@@ -748,7 +700,7 @@ contains
     dasound   = asound/unit_velocity
     dclight   = const_c/unit_velocity
     dvesc     = vesc/unit_velocity
-    dvinf     = dvesc * (alpha/(1.0d0 - alpha))**0.5d0
+    dvinf     = dvesc * sqrt(alpha/(1.0d0 - alpha))
     dkappae   = kappae * unit_density * unit_length
     dGgrav    = Ggrav * my_unit_ggrav
     dgammae   = dkappae * dlstar/(4.d0*dpi * dGgrav * dmstar * dclight)
@@ -776,10 +728,10 @@ contains
 
     ! Output the Alfven speed by summing squared Bfield in each direction
     if (B0field) then
-      w(ixO^S,nw+1) = dsqrt(sum((w(ixO^S,mag(:)) + &
-                            block%B0(ixO^S,:,0))**2, dim=ndim+1)/w(ixO^S,rho_))
+      w(ixO^S,nw+1) = sqrt(sum((w(ixO^S,mag(:)) + &
+                           block%B0(ixO^S,:,0))**2, dim=ndim+1)/w(ixO^S,rho_))
     else
-      w(ixO^S,nw+1) = dsqrt(sum(w(ixO^S,mag(:))**2, dim=ndim+1)/w(ixO^S,rho_))
+      w(ixO^S,nw+1) = sqrt(sum(w(ixO^S,mag(:))**2, dim=ndim+1)/w(ixO^S,rho_))
     endif
 
     !
@@ -815,8 +767,8 @@ contains
     real(8), intent(in)    :: x(ixI^S,1:ndim)
     real(8), intent(inout) :: wB0(ixI^S,1:ndir)
 
-    wB0(ixI^S,1) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * dcos(x(ixI^S,2))
-    wB0(ixI^S,2) = 0.5d0*dbpole * (drstar/x(ixI^S,1))**3.0d0 * dsin(x(ixI^S,2))
+    wB0(ixI^S,1) = dbpole * (drstar/x(ixI^S,1))**3.0d0 * cos(x(ixI^S,2))
+    wB0(ixI^S,2) = 0.5d0*dbpole * (drstar/x(ixI^S,1))**3.0d0 * sin(x(ixI^S,2))
     wB0(ixI^S,3) = 0.0d0
 
   end subroutine make_dipoleboy
