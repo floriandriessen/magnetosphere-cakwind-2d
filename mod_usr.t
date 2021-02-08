@@ -63,6 +63,9 @@
 ! (February 2021) -- Flo
 !   > starting from beta law in high confinement leads to crash, removed mods
 !     from January; instead now 1D relaxed CAK read in
+!   > put effective gravity force in usr_gravity and removed from usr_source
+!   > determination radiation timestep (only CAK line force now) in special_dt
+!     by using gcak slot of nwextra in w-array
 !
 !===============================================================================
 
@@ -150,8 +153,10 @@ contains
     ! Special boundary conditions
     usr_special_bc => special_bound
 
+    usr_gravity => effective_gravity
+
     ! CAK line-force computation
-    usr_source => CAK_source
+    usr_source => line_force
 
     ! Adjusted timestep to account for total radiation force
     usr_get_dt => special_dt
@@ -484,9 +489,9 @@ contains
 
 !===============================================================================
 
-  subroutine CAK_source(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
+  subroutine line_force(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
     !
-    ! Compute the analytical CAK line-force
+    ! Compute the analytical CAK line force using Gayley's formalism
     !
 
     ! Subroutine arguments
@@ -496,12 +501,11 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
-    real(8) :: dvdr_up(ixI^S), dvdr_down(ixI^S), dvdr_cent(ixI^S), dvdr(ixI^S)
-    real(8) :: gcak(ixI^S), geff(ixI^S)
     real(8) :: vr(ixI^S), rho(ixI^S)
-    real(8) :: beta_fd(ixI^S), fdfac(ixI^S), timedum(ixO^S)
+    real(8) :: dvdr_up(ixO^S), dvdr_down(ixO^S), dvdr_cent(ixO^S), dvdr(ixO^S)
+    real(8) :: gcak(ixO^S), beta_fd(ixO^S), fdfac(ixO^S)
     real(8) :: fac, fac1, fac2
-    integer :: i, jx^L, hx^L
+    integer :: jx^L, hx^L
 
     !========================================================================
     ! Convert to primitives
@@ -514,32 +518,25 @@ contains
 
     !========================================================================
 
-    !
-    ! Make new indices covering whole grid by increasing +1 (j) and decreasing
-    ! by -1 (h). Special, fancy syntax that AMRVAC understands
-    !
+    ! Index +1 (j) and index -1 (h) in radial direction; kr(dir,dim)=1, dir=dim
     jx^L=ixO^L+kr(1,^D);
     hx^L=ixO^L-kr(1,^D);
 
     ! Get dv/dr on non-uniform grid according to Sundqvist & Veronis (1970)
-    do i = ixOmin1,ixOmax1
-      ! Forward difference
-      dvdr_up(i^%1ixO^S) = (x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * vr(i+1^%1ixO^S) &
-                          / ((x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i-1^%1ixO^S,1)))
+    ! Forward difference
+    dvdr_up(ixO^S) = (x(ixO^S,1) - x(hx^S,1)) * vr(jx^S) &
+                     / ((x(jx^S,1) - x(ixO^S,1)) * (x(jx^S,1) - x(hx^S,1)))
 
-      ! Backward difference
-      dvdr_down(i^%1ixO^S) = -(x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)) * vr(i-1^%1ixO^S) &
-                          / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i-1^%1ixO^S,1)))
+    ! Backward difference
+    dvdr_down(ixO^S) = -(x(jx^S,1) - x(ixO^S,1)) * vr(hx^S) &
+                        / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(hx^S,1)))
 
-      ! Central difference
-      dvdr_cent(i^%1ixO^S)  = (x(i+1^%1ixO^S,1) + x(i-1^%1ixO^S,1) - 2.0d0*x(i^%1ixO^S,1)) * vr(i^%1ixO^S) &
-                          / ((x(i^%1ixO^S,1) - x(i-1^%1ixO^S,1)) * (x(i+1^%1ixO^S,1) - x(i^%1ixO^S,1)))
-    enddo
+    ! Central difference
+    dvdr_cent(ixO^S) = (x(jx^S,1) + x(hx^S,1) - 2.0d0*x(ixO^S,1)) * vr(ixO^S) &
+                       / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(ixO^S,1)))
 
-    ! Total gradient
+    ! Total gradient with fallback requirement check
     dvdr(ixO^S) = dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S)
-
-    ! In magnetosphere, we actually require fallback)
     dvdr(ixO^S) = max(dvdr(ixO^S), 0.0d0)
 
     ! Finite disk factor parameterisation (Owocki & Puls 1996)
@@ -565,37 +562,28 @@ contains
       fdfac = 1.0d0
     end where
 
-    ! Calculate CAK line-force
+    ! Calculate CAK line-force and correct for finite extend stellar disk
     fac1 = 1.0d0/(1.0d0 - alpha) * dkappae * dlstar*Qbar/(4.0d0*dpi * dclight)
     fac2 = 1.0d0/(dclight * Qbar * dkappae)**alpha
     fac  = fac1 * fac2
 
     gcak(ixO^S) = fac/x(ixO^S,1)**2.0d0 * (dvdr(ixO^S)/rho(ixO^S))**alpha
-
-    ! Correct for finite extend stellar disk
     gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S)
 
-    ! Fill the empty CAK array variable
+    ! Fill the CAK slot variable
     w(ixO^S,my_gcak) = gcak(ixO^S)
 
-    ! Effective gravity computation
-    geff(ixO^S) = - dGgrav * dmstar * (1.0d0 - dgammae)/x(ixO^S,1)**2.0d0
-
     ! Update conservative vars: w = w + qdt*gsource
-    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) &
-                      + qdt * (gcak(ixO^S) + geff(ixO^S))*wCT(ixO^S,rho_)
+    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S) * wCT(ixO^S,rho_)
 
-    ! Define a new time-step corrected for continuum and line-acceleration
-    timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
-    new_timestep   = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
-
-  end subroutine CAK_source
+  end subroutine line_force
 
 !===============================================================================
 
   subroutine special_dt(w,ixI^L,ixO^L,dtnew,dx^D,x)
     !
-    ! After first iteration assign the new time-step of computation CAK force
+    ! After first iteration the usr_source routine has been called, take now
+    ! also timestep from CAK line force into account
     !
 
     ! Subroutine arguments
@@ -604,11 +592,39 @@ contains
     real(8), intent(in)    :: w(ixI^S,1:nw)
     real(8), intent(inout) :: dtnew
 
+    ! Local variables
+    real(8) :: tdum(ixO^S), dt_cak
+
+    ! Get dt from line force that is saved in the w-array in nwextra slot
+    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak)) )
+    dt_cak      = courantpar * minval(tdum(ixO^S))
+
     if (it >= 1) then
-      dtnew = new_timestep
+      dtnew = min(dtnew,dt_cak)
     endif
 
   end subroutine special_dt
+
+!===============================================================================
+
+  subroutine effective_gravity(ixI^L,ixO^L,wCT,x,gravity_field)
+    !
+    ! Combine stellar gravity and continuum electron scattering into an
+    ! effective gravity using Eddington's gamma
+    !
+
+    ! Subroutine arguments
+    integer, intent(in)  :: ixI^L, ixO^L
+    real(8), intent(in)  :: x(ixI^S,1:ndim)
+    real(8), intent(in)  :: wCT(ixI^S,1:nw)
+    real(8), intent(out) :: gravity_field(ixI^S,ndim)
+
+    gravity_field(ixO^S,:) = 0.0d0
+
+    ! Only in radial direction
+    gravity_field(ixO^S,1) = -dGgrav*dmstar * (1.0d0-dgammae)/x(ixO^S,1)**2.0d0
+
+  end subroutine effective_gravity
 
 !===============================================================================
 

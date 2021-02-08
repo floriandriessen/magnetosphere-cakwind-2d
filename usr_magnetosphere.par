@@ -8,7 +8,7 @@
 !=================================================
 
 &filelist
-  base_filename  = 'read_ic/ms'
+  base_filename  = 'test/ms'
   saveprim       = .true.
   autoconvert    = .true.
   nwauxio        = 2
@@ -63,6 +63,7 @@
 /
 
 &mhd_list
+  mhd_gravity = .true.
   mhd_energy  = .false.
   mhd_gamma   = 1.0d0
   typedivbfix = 'powel'
