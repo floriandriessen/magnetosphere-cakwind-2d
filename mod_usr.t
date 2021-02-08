@@ -63,6 +63,9 @@
 ! (February 2021) -- Flo
 !   > starting from beta law in high confinement leads to crash, removed mods
 !     from January; instead now 1D relaxed CAK read in
+!   > put effective gravity force in usr_gravity and removed from usr_source
+!   > determination radiation timestep (only CAK line force now) in special_dt
+!     by using gcak slot of nwextra in w-array
 !
 !===============================================================================
 
@@ -488,7 +491,7 @@ contains
 
   subroutine CAK_source(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
     !
-    ! Compute the analytical CAK line-force
+    ! Compute the analytical CAK line force using Gayley's formalism
     !
 
     ! Subroutine arguments
@@ -501,9 +504,9 @@ contains
     real(8) :: dvdr_up(ixI^S), dvdr_down(ixI^S), dvdr_cent(ixI^S), dvdr(ixI^S)
     real(8) :: gcak(ixI^S), geff(ixI^S)
     real(8) :: vr(ixI^S), rho(ixI^S)
-    real(8) :: beta_fd(ixI^S), fdfac(ixI^S), timedum(ixO^S)
+    real(8) :: beta_fd(ixI^S), fdfac(ixI^S)
     real(8) :: fac, fac1, fac2
-    integer :: i, jx^L, hx^L
+    integer :: i
 
     !========================================================================
     ! Convert to primitives
@@ -515,13 +518,6 @@ contains
     rho(ixI^S) = wCT(ixI^S,rho_)
 
     !========================================================================
-
-    !
-    ! Make new indices covering whole grid by increasing +1 (j) and decreasing
-    ! by -1 (h). Special, fancy syntax that AMRVAC understands
-    !
-    jx^L=ixO^L+kr(1,^D);
-    hx^L=ixO^L-kr(1,^D);
 
     ! Get dv/dr on non-uniform grid according to Sundqvist & Veronis (1970)
     do i = ixOmin1,ixOmax1
@@ -567,32 +563,19 @@ contains
       fdfac = 1.0d0
     end where
 
-    ! Calculate CAK line-force
+    ! Calculate CAK line-force and correct for finite extend stellar disk
     fac1 = 1.0d0/(1.0d0 - alpha) * dkappae * dlstar*Qbar/(4.0d0*dpi * dclight)
     fac2 = 1.0d0/(dclight * Qbar * dkappae)**alpha
     fac  = fac1 * fac2
 
     gcak(ixO^S) = fac/x(ixO^S,1)**2.0d0 * (dvdr(ixO^S)/rho(ixO^S))**alpha
-
-    ! Correct for finite extend stellar disk
     gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S)
 
-    ! Fill the empty CAK array variable
+    ! Fill the CAK slot variable
     w(ixO^S,my_gcak) = gcak(ixO^S)
 
-    ! Effective gravity computation
-    !geff(ixO^S) = - dGgrav * dmstar * (1.0d0 - dgammae)/x(ixO^S,1)**2.0d0
-
     ! Update conservative vars: w = w + qdt*gsource
-    ! w(ixO^S,mom(1)) = w(ixO^S,mom(1)) &
-    !                   + qdt * (gcak(ixO^S) + geff(ixO^S))*wCT(ixO^S,rho_)
-
     w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S) * wCT(ixO^S,rho_)
-
-    ! Define a new time-step corrected for continuum and line-acceleration
-    !timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / (gcak(ixO^S) + geff(ixO^S))
-    !timedum(ixO^S) = (x(jx^S,1) - x(ixO^S,1)) / gcak(ixO^S)
-    !new_timestep   = 0.3d0 * minval( abs(timedum(ixO^S)) )**0.5d0
 
   end subroutine CAK_source
 
@@ -600,7 +583,8 @@ contains
 
   subroutine special_dt(w,ixI^L,ixO^L,dtnew,dx^D,x)
     !
-    ! After first iteration assign the new time-step of computation CAK force
+    ! After first iteration the usr_source routine has been called, take now
+    ! also timestep from CAK line force into account
     !
 
     ! Subroutine arguments
@@ -617,11 +601,9 @@ contains
     dt_cak      = courantpar * minval(tdum(ixO^S))
 
     if (it >= 1) then
-      !if (mype==0) print*,dt_cak,dtnew
       dtnew = min(dtnew,dt_cak)
     endif
 
-    !if (it>100) call mpistop('testing')
   end subroutine special_dt
 
 !===============================================================================
