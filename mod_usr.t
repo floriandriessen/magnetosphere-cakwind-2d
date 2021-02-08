@@ -418,7 +418,7 @@ contains
         do i = ixBmax1,ixBmin1,-1
           w(i^%1ixB^S,mag(2)) = w(i+1^%1ixB^S,mag(2)) &
                             - (w(i+2^%1ixB^S,mag(2)) - w(i+1^%1ixB^S,mag(2))) &
-                            * (x(i+1^%1ixB^S,1) - x(i,:,1))/(x(i+2^%1ixB^S,1) - x(i+1^%1ixB^S,1))
+                            * (x(i+1^%1ixB^S,1) - x(i^%1ixB^S,1))/(x(i+2^%1ixB^S,1) - x(i+1^%1ixB^S,1))
         enddo
       else
         w(ixB^S,mag(2)) = 0.0d0
