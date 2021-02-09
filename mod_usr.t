@@ -106,10 +106,8 @@ module mod_usr
   real(8) :: dtstat, dvrot
 
   ! Additional names for wind and statistical variables
-  integer :: my_gcak
-  integer :: my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav, my_vpolav, &
-             my_vpol2av
-  integer :: my_tmp1, my_tmp2, my_tmp3, my_tmp4, my_tmp5,my_tmp6, my_tmp7
+  integer :: my_gcak, my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav
+  integer :: my_vpolav, my_vpol2av
 
   ! Arrays required to read and store 1D profile from file
   real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
@@ -133,16 +131,16 @@ contains
 
     call MHD_activate()
 
-    usr_set_parameters => initglobaldata_usr
-    usr_init_one_grid  => initial_conditions
-    usr_special_bc     => special_bound
-    usr_gravity        => effective_gravity
-    usr_source         => line_force
-    usr_get_dt         => special_dt
-    usr_process_adv_grid   => compute_stats
-    usr_aux_output     => set_extravar_output
-    usr_add_aux_names  => set_extravarnames_output
-    usr_set_B0         => make_dipoleboy
+    usr_set_parameters   => initglobaldata_usr
+    usr_init_one_grid    => initial_conditions
+    usr_special_bc       => special_bound
+    usr_gravity          => effective_gravity
+    usr_source           => line_force
+    usr_get_dt           => special_dt
+    usr_process_adv_grid => compute_stats
+    usr_aux_output       => set_extravar_output
+    usr_add_aux_names    => set_extravarnames_output
+    usr_set_B0           => make_dipoleboy
 
     my_gcak    = var_set_extravar("gcak", "gcak")
     my_rhoav   = var_set_extravar("rho_av", "rho_av")
@@ -152,14 +150,6 @@ contains
     my_vr2av   = var_set_extravar("vrad2_av", "vrad2_av")
     my_vpol2av = var_set_extravar("vtheta2_av", "vtheta2_av")
     my_rhovrav = var_set_extravar("rho_vrad_av", "rho_vrad_av")
-
-    my_tmp1 = var_set_extravar("tmp1","tmp1")
-    my_tmp2 = var_set_extravar("tmp2","tmp2")
-    my_tmp3 = var_set_extravar("tmp3","tmp3")
-    my_tmp4 = var_set_extravar("tmp4","tmp4")
-    my_tmp5 = var_set_extravar("tmp5","tmp5")
-    my_tmp6 = var_set_extravar("tmp6","tmp6")
-    my_tmp7 = var_set_extravar("tmp7","tmp7")
 
   end subroutine usr_init
 
@@ -212,11 +202,11 @@ contains
     vrot   = vrotc * Wrot
 
     ! Wind quantities in CAK theory
-    vesc    = sqrt(2.0d0 * Ggrav * mstar*(1.0d0 - gammae)/rstar)
-    vinf    = vesc * sqrt(alpha/(1.0d0 - alpha))
-    mdot    = lstar/const_c**2.0d0 * alpha/(1.0d0 - alpha) &
+    vesc   = sqrt(2.0d0 * Ggrav * mstar*(1.0d0 - gammae)/rstar)
+    vinf   = vesc * sqrt(alpha/(1.0d0 - alpha))
+    mdot   = lstar/const_c**2.0d0 * alpha/(1.0d0 - alpha) &
                * (Qbar * gammae/(1.0d0 - gammae))**((1.0d0 - alpha)/alpha)
-    mdotfd  = mdot/(1.0d0 + alpha)**(1.0d0/alpha)
+    mdotfd = mdot/(1.0d0 + alpha)**(1.0d0/alpha)
 
     ! Bpole given and etastar computed or vice versa
     if (imag > 0.0d0) then
@@ -224,7 +214,7 @@ contains
       etastar = ((bpole/2.0d0)**2.0d0 * rstar**2.0d0)/(mdot * vinf)
     else
       etastar = -imag
-      bpole   = 2.0d0 * sqrt(mdot * vinf * etastar / rstar**2.0d0)
+      bpole   = 2.0d0 * sqrt(mdot * vinf * etastar/rstar**2.0d0)
     endif
 
     ! Compute Alfven and Kepler radius
@@ -706,7 +696,7 @@ contains
     !
 
     ! Subroutine arguments
-    integer, intent(in) :: ixI^L,ixO^L
+    integer, intent(in) :: ixI^L, ixO^L
     real(8), intent(in) :: x(ixI^S,1:ndim)
     real(8)             :: w(ixI^S,nw+nwauxio)
     real(8)             :: normconv(0:nw+nwauxio)
@@ -751,7 +741,7 @@ contains
     !
 
     ! Subroutine arguments
-    integer, intent(in)    :: ixI^L,ixO^L
+    integer, intent(in)    :: ixI^L, ixO^L
     real(8), intent(in)    :: x(ixI^S,1:ndim)
     real(8), intent(inout) :: wB0(ixI^S,1:ndir)
 
@@ -776,7 +766,7 @@ contains
 
     ! Local variables
     integer :: i, ncells, unit=69
-    real(8) :: tmp,tmp1
+    real(8) :: tmp, tmp1
     logical :: alive
 
     !======================
