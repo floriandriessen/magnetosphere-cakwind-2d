@@ -66,6 +66,10 @@
 !   > put effective gravity force in usr_gravity and removed from usr_source
 !   > determination radiation timestep (only CAK line force now) in special_dt
 !     by using gcak slot of nwextra in w-array
+!   > rewriting statistics to get rid off tmp variables, AMRVAC keeps in memory
+!     the w-array from previous iteration, and now called in my computation
+!   > call statistics at end iteration (usr_process_adv_grid) instead of at
+!     start iteration to have access to the old state 'pso'
 !
 !===============================================================================
 
@@ -163,7 +167,7 @@ contains
 
     ! Every iteration retrieve global grid info and perform operations on it
     ! to make time-averaged statistical quantities of wind
-    usr_process_grid => compute_stats
+    usr_process_adv_grid => compute_stats
 
     ! Compute and include Alfven speed and divergence of Bfield as output
     usr_aux_output    => set_extravar_output
@@ -635,7 +639,8 @@ contains
     !  <X>_i = <X>_i-1 + 0.5*dt*( X_i + X_i-1 )
     !
     ! where <X> is the average of variable X and i','i-1' are the current and
-    ! previous time step respectively
+    ! previous time step respectively. Variables from the previous time step
+    ! are accessed with the 'pso' state that AMRVAC keeps tracking itself
     !
 
     ! Subroutine arguments
@@ -644,73 +649,66 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
-    logical :: first_time = .true.
     real(8) :: tnorm
+    real(8) :: tmp1(ixO^S), tmp2(ixO^S), tmp3(ixO^S), tmp4(ixO^S)
+    real(8) :: tmp5(ixO^S), tmp6(ixO^S), tmp7(ixO^S)
 
-    if (global_time >= dtstat) then
+    ! Note: qt is just a placeholder for the 'global_time' variable
+    if (qt > dtstat) then
 
       call mhd_to_primitive(ixI^L,ixO^L,w,x)
+      call mhd_to_primitive(ixI^L,ixO^L,pso(igrid)%w,pso(igrid)%x)
 
-      if (first_time) then
-        w(ixO^S,my_tmp1) = w(ixO^S,rho_)
-        w(ixO^S,my_tmp2) = w(ixO^S,rho_)**2.0d0
-        w(ixO^S,my_tmp3) = w(ixO^S,mom(1))
-        w(ixO^S,my_tmp4) = w(ixO^S,mom(1))**2.0d0
-        w(ixO^S,my_tmp5) = w(ixO^S,rho_) * w(ixO^S,mom(1))
-        w(ixO^S,my_tmp6) = w(ixO^S,mom(2))
-        w(ixO^S,my_tmp7) = w(ixO^S,mom(2))**2.0d0
-        first_time       = .false.
-      else
-        ! Time weight
-        tnorm = global_time - dtstat
+      ! Time weight
+      tnorm = qt - dtstat
 
-        ! Average density
-        w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)*(tnorm-dt) &
-                            + 0.5d0*dt * (w(ixO^S,rho_) + w(ixO^S,my_tmp1))
-        w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)/tnorm
-        w(ixO^S,my_tmp1)  = w(ixO^S,rho_)
+      ! Store previous hydro state in easier named vars
+      tmp1(ixO^S) = pso(igrid)%w(ixO^S,rho_)
+      tmp2(ixO^S) = ( pso(igrid)%w(ixO^S,rho_) )**2.0d0
+      tmp3(ixO^S) = pso(igrid)%w(ixO^S,mom(1))
+      tmp4(ixO^S) = ( pso(igrid)%w(ixO^S,mom(1)) )**2.0d0
+      tmp5(ixO^S) = pso(igrid)%w(ixO^S,rho_) * pso(igrid)%w(ixO^S,mom(1))
+      tmp6(ixO^S) = pso(igrid)%w(ixO^S,mom(2))
+      tmp7(ixO^S) = ( pso(igrid)%w(ixO^S,mom(2)) )**2.0d0
 
-        ! Average density squared
-        w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)*(tnorm-dt) &
-                             + 0.5d0*dt * (w(ixO^S,rho_)**2.0d0 + w(ixO^S,my_tmp2))
-        w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)/tnorm
-        w(ixO^S,my_tmp2)   = w(ixO^S,rho_)**2.0d0
+      ! Average density
+      w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)*(tnorm-dt) &
+                          + 0.5d0*dt * (w(ixO^S,rho_) + tmp1(ixO^S))
+      w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)/tnorm
 
-        ! Average radial velocity
-        w(ixO^S,my_vrav)  = w(ixO^S,my_vrav)*(tnorm-dt) &
-                            + 0.5d0*dt * (w(ixO^S,mom(1)) + w(ixO^S,my_tmp3))
-        w(ixO^S,my_vrav)  = w(ixO^S,my_vrav)/tnorm
-        w(ixO^S,my_tmp3)  = w(ixO^S,mom(1))
+      ! Average density squared
+      w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)*(tnorm-dt) &
+                           + 0.5d0*dt * (w(ixO^S,rho_)**2.0d0 + tmp2(ixO^S))
+      w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)/tnorm
 
-        ! Average radial velocity squared
-        w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)*(tnorm-dt) &
-                           + 0.5d0*dt * (w(ixO^S,mom(1))**2.0d0 + w(ixO^S,my_tmp4))
-        w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)/tnorm
-        w(ixO^S,my_tmp4)  = w(ixO^S,mom(1))**2.0d0
+      ! Average radial velocity
+      w(ixO^S,my_vrav) = w(ixO^S,my_vrav)*(tnorm-dt) &
+                         + 0.5d0*dt * (w(ixO^S,mom(1)) + tmp3(ixO^S))
+      w(ixO^S,my_vrav) = w(ixO^S,my_vrav)/tnorm
 
-        ! Average radial momentum density (correlation density-velocity)
-        w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)*(tnorm-dt) &
-                              + 0.5d0*dt                    &
-                              * (w(ixO^S,rho_) * w(ixO^S,mom(1)) + w(ixO^S,my_tmp5))
-        w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)/tnorm
-        w(ixO^S,my_tmp5)    = w(ixO^S,rho_) * w(ixO^S,mom(1))
+      ! Average radial velocity squared
+      w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)*(tnorm-dt) &
+                          + 0.5d0*dt * (w(ixO^S,mom(1))**2.0d0 + tmp4(ixO^S))
+      w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)/tnorm
 
-        ! Average polar velocity
-        w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)*(tnorm-dt) &
-                             + 0.5d0*dt * (w(ixO^S,mom(2)) + w(ixO^S,my_tmp6))
-        w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)/tnorm
-        w(ixO^S,my_tmp6)   = w(ixO^S,mom(2))
+      ! Average radial momentum density (correlation density-velocity)
+      w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)*(tnorm-dt) &
+                            + 0.5d0*dt                    &
+                            * (w(ixO^S,rho_) * w(ixO^S,mom(1)) + tmp5(ixO^S))
+      w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)/tnorm
 
-        ! Average polar velocity squared
-        w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)*(tnorm-dt) &
-                              + 0.5d0*dt * (w(ixO^S,mom(2))**2.0d0 + w(ixO^S,my_tmp7))
-        w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)/tnorm
-        w(ixO^S,my_tmp7)    = w(ixO^S,mom(2))**2.0d0
+      ! Average polar velocity
+      w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)*(tnorm-dt) &
+                           + 0.5d0*dt * (w(ixO^S,mom(2)) + tmp6(ixO^S))
+      w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)/tnorm
 
-      endif
+      ! Average polar velocity squared
+      w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)*(tnorm-dt) &
+                            + 0.5d0*dt * (w(ixO^S,mom(2))**2.0d0 + tmp7(ixO^S))
+      w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)/tnorm
 
+      call mhd_to_conserved(ixI^L,ixO^L,pso(igrid)%w,pso(igrid)%x)
       call mhd_to_conserved(ixI^L,ixO^L,w,x)
-
     endif
 
   end subroutine compute_stats
