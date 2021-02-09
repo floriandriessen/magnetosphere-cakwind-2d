@@ -55,7 +55,7 @@ To enable a resume the following has to be activated and commented in the magnet
 &stoplist
  reset_it = .true.
 ```
-also ensure that *time_max* in `stoplist` is bigger than the time of the last snapshot (otherwise it cannot be extended...). Additionally commented in the `savelist` is the generation of simulation log + simulation output at startup as this is generally unwanted. Also because we want to resume we do not want to reset the time or initialise the time in `stoplist`. If the *base_filename* is pointed correctly in `filelist`, AMRVAC will just continue writing output to this directory.
+also ensure that `time_max` in `stoplist` is bigger than the time of the last snapshot (otherwise it cannot be extended...). Additionally commented in the `savelist` is the generation of simulation log + simulation output at startup as this is generally unwanted. Also because we want to resume we do not want to reset the time or initialise the time in `stoplist`. If the `base_filename` is pointed correctly in `filelist`, AMRVAC will just continue writing output to this directory.
 
 When resuming the AMRVAC call requires the additional flag **-resume**. For example,
 ```
@@ -74,7 +74,7 @@ If you want to restart from some existing magnetosphere output file this is poss
 &stoplist
  reset_it = .true.
 ```
-In this case the snapshot count starts from (snapshot number +1) from where you started (if you also reset time, the snapshot count would start at 0 and start to overwrite your original data!!!, likewise we do not want to initialise the time again). Contrary to a resume, you can let AMRVAC write the data to another directory by specifying a different *base_filename* in `filelist`. This could be useful if you do not want to overwrite existing snapshots following your snapshot count.
+In this case the snapshot count starts with *snapshot number +1* from where you started (if you also reset time, the snapshot count will start at 0 and start to overwrite your original data!!!, likewise we do not want to initialise the time again). Contrary to a resume, you can let AMRVAC write the data to another directory by specifying a different `base_filename` in `filelist`. This could be useful if you do not want to overwrite existing snapshots following your snapshot count.
 
 Finally, to run the simulation you can just do the same executable call as you would normally do. However, it is also possible to specify a restart directly from the command line. In order to do so an additional flag **-if path_to_datfile** has to be included (and no `restart_from_file` has to be specified in the .par file). For example,
 ```
@@ -100,6 +100,14 @@ Additionally, a `star_list` is specified in the .par file containing variables s
 | Qbar     | Gayley's line-force parameter (no units)                          |
 | tstat    | time to start to compute statistical averages (sec)               |
 | Wrot     | ratio of equatorial rotational velocity to orbital (critical)  velocity |
+
+### More info on the statistics
+
+The `tstat` should generally be set to a time where the wind reaches a time and state where initial perturbations have left the grid. If not, the statistical averaging will contain remnants from these perturbations. 
+
+The computation of an averaged value <X> is done in the `compute_stats` routine. Once entered for the first time, the routine calls the w-array from the previous iteration of each block (stored in `pso(igrid)` by AMRVAC) and assigns them to temporary placeholders. After each computation of <X> we have to normalise with the appropriate time-weight `tnorm` but in the next iteration we have to 'un-normalise' it back in time `tnorm - dt` to compute the current timestep <X> again.
+
+The routine is called at the **end** of the iteration (i.e. after the advection has been performed) and the w-array is extended with *nwextra* variables storing the <X> quantities (defined in the code with `var_set_extravar()`). If wished for, it is straightforward to here also include new quantities of interest. **Note** that although the routine is called each iteration, the actual values are only printed every `dtsave_dat`. 
 
 ## Notice
 

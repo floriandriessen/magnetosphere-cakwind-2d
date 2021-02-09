@@ -13,7 +13,6 @@
   autoconvert    = .true.
   nwauxio        = 2
   convert_type   = 'vtuBCCmpi'
-  w_write(16:22) = 7*.false.
 /
 
 &savelist
