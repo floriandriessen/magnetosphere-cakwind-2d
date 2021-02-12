@@ -105,9 +105,9 @@ Additionally, a `star_list` is specified in the .par file containing variables s
 
 The `tstat` should generally be set to a time where the wind reaches a time and state where initial perturbations have left the grid. If not, the statistical averaging will contain remnants from these perturbations. 
 
-The computation of an averaged value <X> is done in the `compute_stats` routine. Once entered for the first time, the routine calls the w-array from the previous iteration of each block (stored in `pso(igrid)` by AMRVAC) and assigns them to temporary placeholders. After each computation of <X> we have to normalise with the appropriate time-weight `tnorm` but in the next iteration we have to 'un-normalise' it back in time `tnorm - dt` to compute the current timestep <X> again.
+The computation of an averaged value <X> is done in the `compute_stats` routine. Once entered for the first time, the routine calls the w-array from the previous iteration of each block (stored in `pso(igrid)` by AMRVAC) and assigns them to temporary placeholders. For proper output during the simulation; after each computation of <X> a normalisation occurs with the current time-weight `tnormc` but in the next iteration we have to 'un-normalise' it back in time `tnormp` to compute the current timestep <X> again.
 
-The routine is called at the **end** of the iteration (i.e. after the advection has been performed) and the w-array is extended with *nwextra* variables storing the <X> quantities (defined in the code with `var_set_extravar()`). If wished for, it is straightforward to here also include new quantities of interest. **Note** that although the routine is called each iteration, the actual values are only printed every `dtsave_dat`. 
+The routine is called at the **end** of the iteration (i.e. after the advection has been performed) and the w-array is thus evolved. However, the *nwextra* variables (defined in the code with `var_set_extravar()`) are never evolved and so they are still at the state before advection (i.e. previous timestep). This is important in order to do proper time-weighting during the simulation. If wished for, it is straightforward to also include here new quantities of interest. **Note** that although the routine is called each iteration, the actual values are only printed every `dtsave_dat`. 
 
 ## Notice
 

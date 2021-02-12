@@ -582,8 +582,11 @@ contains
     !  <X>_i = <X>_i-1 + 0.5*dt*( X_i + X_i-1 )
     !
     ! where <X> is the average of variable X and i','i-1' are the current and
-    ! previous time step respectively. Variables from the previous time step
+    ! previous timestep respectively. Variables from the previous time step
     ! are accessed with the 'pso' state that AMRVAC keeps tracking itself
+    !
+    ! NOTE: w at global_time^(n+1) due to advection, but w-nwextra and
+    !       global_time still at global_time^n => corrected for in time-weights
     !
 
     ! Subroutine arguments
@@ -592,18 +595,19 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
-    real(8) :: tnorm
+    real(8) :: tnormp, tnormc
     real(8) :: tmp1(ixO^S), tmp2(ixO^S), tmp3(ixO^S), tmp4(ixO^S)
     real(8) :: tmp5(ixO^S), tmp6(ixO^S), tmp7(ixO^S)
 
     ! Note: qt is just a placeholder for the 'global_time' variable
-    if (qt > dtstat) then
+    if (qt >= dtstat) then
 
       call mhd_to_primitive(ixI^L,ixO^L,w,x)
       call mhd_to_primitive(ixI^L,ixO^L,pso(igrid)%w,pso(igrid)%x)
 
-      ! Time weight
-      tnorm = qt - dtstat
+      ! Current ^(n+1) and previous ^(n) timestep normalisation weigths
+      tnormc = qt + dt - dtstat
+      tnormp = qt - dtstat
 
       ! Store previous hydro state in easier named vars
       tmp1(ixO^S) = pso(igrid)%w(ixO^S,rho_)
@@ -615,40 +619,40 @@ contains
       tmp7(ixO^S) = ( pso(igrid)%w(ixO^S,mom(2)) )**2.0d0
 
       ! Average density
-      w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)*(tnorm-dt) &
+      w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav) * tnormp &
                           + 0.5d0*dt * (w(ixO^S,rho_) + tmp1(ixO^S))
-      w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)/tnorm
+      w(ixO^S,my_rhoav) = w(ixO^S,my_rhoav)/tnormc
 
       ! Average density squared
-      w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)*(tnorm-dt) &
+      w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av) * tnormp &
                            + 0.5d0*dt * (w(ixO^S,rho_)**2.0d0 + tmp2(ixO^S))
-      w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)/tnorm
+      w(ixO^S,my_rho2av) = w(ixO^S,my_rho2av)/tnormc
 
       ! Average radial velocity
-      w(ixO^S,my_vrav) = w(ixO^S,my_vrav)*(tnorm-dt) &
+      w(ixO^S,my_vrav) = w(ixO^S,my_vrav) * tnormp &
                          + 0.5d0*dt * (w(ixO^S,mom(1)) + tmp3(ixO^S))
-      w(ixO^S,my_vrav) = w(ixO^S,my_vrav)/tnorm
+      w(ixO^S,my_vrav) = w(ixO^S,my_vrav)/tnormc
 
       ! Average radial velocity squared
-      w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)*(tnorm-dt) &
+      w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av) * tnormp &
                           + 0.5d0*dt * (w(ixO^S,mom(1))**2.0d0 + tmp4(ixO^S))
-      w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)/tnorm
+      w(ixO^S,my_vr2av) = w(ixO^S,my_vr2av)/tnormc
 
       ! Average radial momentum density (correlation density-velocity)
-      w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)*(tnorm-dt) &
-                            + 0.5d0*dt                    &
+      w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav) * tnormp &
+                            + 0.5d0*dt                   &
                             * (w(ixO^S,rho_) * w(ixO^S,mom(1)) + tmp5(ixO^S))
-      w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)/tnorm
+      w(ixO^S,my_rhovrav) = w(ixO^S,my_rhovrav)/tnormc
 
       ! Average polar velocity
-      w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)*(tnorm-dt) &
+      w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav) * tnormp &
                            + 0.5d0*dt * (w(ixO^S,mom(2)) + tmp6(ixO^S))
-      w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)/tnorm
+      w(ixO^S,my_vpolav) = w(ixO^S,my_vpolav)/tnormc
 
       ! Average polar velocity squared
-      w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)*(tnorm-dt) &
+      w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av) * tnormp &
                             + 0.5d0*dt * (w(ixO^S,mom(2))**2.0d0 + tmp7(ixO^S))
-      w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)/tnorm
+      w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)/tnormc
 
       call mhd_to_conserved(ixI^L,ixO^L,pso(igrid)%w,pso(igrid)%x)
       call mhd_to_conserved(ixI^L,ixO^L,w,x)
