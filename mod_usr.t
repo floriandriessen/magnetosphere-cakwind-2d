@@ -96,9 +96,9 @@ module mod_usr
   !   Eddington gamma, escape speed, CAK + fd mass-loss rate, terminal wind
   !   speed, sound speed, log(g), eff. log(g), scale height, mean mol. weight,
   !   polar magnetic field, wind magnetic confinement parameter, Alfven +
-  !   Kepler radius, equatorial rotation + critical rotation speed
+  !   Kepler + escape radius, equatorial rotation + critical rotation speed
   real(8) :: gammae, vesc, mdot, mdotfd, vinf, asound, logg, logge, heff
-  real(8) :: mumol, bpole, etastar, ralf, rkep, vrot, vrotc
+  real(8) :: mumol, bpole, etastar, ralf, rkep, resc, vrot, vrotc
 
   ! Dimensionless variables of relevant variables above
   real(8) :: dlstar, dmstar, drstar, dbpole, drhobound, dtwind, dkappae
@@ -217,9 +217,10 @@ contains
       bpole   = 2.0d0 * sqrt(mdot * vinf * etastar/rstar**2.0d0)
     endif
 
-    ! Compute Alfven and Kepler radius
+    ! Compute Alfven, Kepler, and escape radius
     ralf = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
     rkep = Wrot**(-2.0d0/3.0d0)
+    resc = 2.0d0**(1.0d0/3.0d0) * rkep
 
     call make_dimless_vars()
     call read_initial_oned_cak(cakfile)
@@ -256,6 +257,7 @@ contains
       write(94,*) 'Wind confinement eta   = ', etastar
       write(94,*) 'Ralf/Rstar             = ', ralf
       write(94,*) 'Rkep/Rstar             = ', rkep
+      write(94,*) 'Resc/Rstar             = ', resc
       write(94,*) 'W (vrot/vrotc)         = ', Wrot
       write(94,*) 'critical vrot          = ', vrotc
       write(94,*) 'vrot                   = ', vrot
