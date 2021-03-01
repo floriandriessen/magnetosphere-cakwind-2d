@@ -367,7 +367,7 @@ contains
 
   subroutine special_bound(qt,ixI^L,ixB^L,iB,w,x)
     !
-    ! Modified boundary values only at left radial boundary (star)
+    ! Modified boundary values only at inner and outer radial boundary
     !
 
     ! Subroutine arguments
@@ -385,16 +385,14 @@ contains
 
       w(ixB^S,rho_) = drhobound
 
-      ! Radial velocity field (slope extrapolation in 1st ghost, then constant)
+      ! vr (only 2nd order accurate constant slope extrapolation in 1st ghost)
       do i = ixBmax1,ixBmin1,-1
         if (i == ixBmax1) then
-          w(i^%1ixB^S,mom(1)) = w(i+1^%1ixB^S,mom(1)) &
-                           - (w(i+2^%1ixB^S,mom(1)) - w(i+1^%1ixB^S,mom(1))) &
-                           * (x(i+1^%1ixB^S,1) - x(i^%1ixB^S,1))/(x(i+2^%1ixB^S,1) - x(i+1^%1ixB^S,1))
+          w(i^%1ixB^S,mom(1)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mom(1)) &
+                                               + 4.0d0 * w(i+1^%1ixB^S,mom(1)))
         else
           w(i^%1ixB^S,mom(1)) = w(i+1^%1ixB^S,mom(1))
         endif
-
       enddo
 
       ! Prohibit radial velocity ghosts to be supersonic, and avoid overloading
@@ -404,31 +402,108 @@ contains
       w(ixB^S,mom(2)) = 0.0d0
       w(ixB^S,mom(3)) = dvrot * sin(x(ixB^S,2))
 
-      w(ixB^S,mag(1)) = dbpole * cos(x(ixB^S,2))
-      !
-      ! Polar magnetic dipole field
-      !   > Magnetic confinement: do linear extrapolation
-      !   > No confinement: set to zero
-      !
-      if (etastar >= 1.0d0) then
+      !=================
+      ! Tanaka splitting
+      !=================
+      if (B0field) then
         do i = ixBmax1,ixBmin1,-1
-          w(i^%1ixB^S,mag(2)) = w(i+1^%1ixB^S,mag(2)) &
-                            - (w(i+2^%1ixB^S,mag(2)) - w(i+1^%1ixB^S,mag(2))) &
-                            * (x(i+1^%1ixB^S,1) - x(i^%1ixB^S,1))/(x(i+2^%1ixB^S,1) - x(i+1^%1ixB^S,1))
+          ! r*r*(B0r + delta Br) = constant
+          w(i^%1ixB^S,mag(1)) = (dbpole * cos(x(ixBmax1+1^%1ixB^S,2)) &
+                                  + w(ixBmax1+1^%1ixB^S,mag(1))) &
+                                / x(i^%1ixB^S,1)**2 - block%B0(i^%1ixB^S,1,0)
+
+          ! delta Btheta
+          w(i^%1ixB^S,mag(2)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(2)) &
+                                               + 4.0d0 * w(i+1^%1ixB^S,mag(2)))
+
+          ! delta Bphi
+          w(i^%1ixB^S,mag(3)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(3)) &
+                                               + 4.0d0 * w(i+1^%1ixB^S,mag(3)))
         enddo
+      !========
+      ! Regular
+      !========
       else
-        w(ixB^S,mag(2)) = 0.0d0
+        do i = ixBmax1,ixBmin1,-1
+          ! r*r*Br = constant
+          w(i^%1ixB^S,mag(1)) = (dbpole * cos(x(ixBmax1+1^%1ixB^S,2))) &
+                                 / x(i^%1ixB^S,1)**2.0d0
+
+          ! Btheta
+          w(i^%1ixB^S,mag(2)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(2)) &
+                                               + 4.0d0 * w(i+1^%1ixB^S,mag(2)))
+
+          ! Bphi
+          w(i^%1ixB^S,mag(3)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(3)) &
+                                               + 4.0d0 * w(i+1^%1ixB^S,mag(3)))
+        enddo
       endif
-
-      w(ixB^S,mag(3)) = 0.0d0
-
-      ! Tanaka split: subtract background field to get deviated boundary field
-      if (B0field) w(ixB^S,mag(:)) = w(ixB^S,mag(:)) - block%B0(ixB^S,:,0)
 
       ! When using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
       call mhd_to_conserved(ixI^L,ixI^L,w,x)
+
+    case(2)
+
+      do i = ixBmin1,ixBmax1
+        ! r*r*rho = constant
+        w(i^%1ixB^S,rho_) = w(ixBmin1-1^%1ixB^S,rho_) &
+                            * (x(ixBmin1-1^%1ixB^S,1) / x(i^%1ixB^S,1))**2.0d0
+
+        ! r*r*rho*vr = constant
+        w(i^%1ixB^S,mom(1)) = w(ixBmin1-1^%1ixB^S,mom(1)) &
+                              * (x(ixBmin1-1^%1ixB^S,1)/x(i^%1ixB^S,1))**2.0d0
+
+        ! rho*vtheta = constant
+        w(i^%1ixB^S,mom(2)) = w(ixBmin1-1^%1ixB^S,mom(2))
+
+        ! r*vphi = constant
+        w(i^%1ixB^S,mom(3)) = &
+                (w(ixBmin1-1^%1ixB^S,mom(3)) / w(ixBmin1-1^%1ixB^S,rho_)) &
+                * (x(ixBmin1-1^%1ixB^S,1) / x(i^%1ixB^S,1)) * w(i^%1ixB^S,rho_)
+
+        !=================
+        ! Tanaka splitting
+        !=================
+        if (B0field) then
+          ! r*r*(B0r + delta Br) = constant
+          w(i^%1ixB^S,mag(1)) = ( dbpole * cos(x(ixBmin1-1^%1ixB^S,2)) &
+                                  * (drstar/x(ixBmin1-1^%1ixB^S,1))**3.0d0 &
+                                  + w(ixBmin1-1^%1ixB^S,mag(1)) &
+                                ) &
+                                * (x(ixBmin1-1^%1ixB^S,1)/x(i^%1ixB^S,1))**2.0d0 &
+                                - block%B0(i^%1ixB^S,1,0)
+
+          ! (B0theta + delta Btheta) = constant
+          w(i^%1ixB^S,mag(2)) = ( 0.5d0*dbpole * sin(x(ixBmin1-1^%1ixB^S,2)) &
+                                  * (drstar/x(ixBmin1-1^%1ixB^S,1))**3.0d0 &
+                                  + w(ixBmin1-1^%1ixB^S,mag(2)) &
+                                ) &
+                                - block%B0(i^%1ixB^S,2,0)
+
+          ! r*(B0phi + delta Bphi) = constant
+          w(i^%1ixB^S,mag(3)) = w(ixBmin1-1^%1ixB^S,mag(3)) &
+                                * x(ixBmin1-1^%1ixB^S,1) / x(i^%1ixB^S,1) &
+                                - block%B0(i^%1ixB^S,3,0)
+        !========
+        ! Regular
+        !========
+        else
+          ! r*r*Br = constant
+          w(i^%1ixB^S,mag(1)) = w(ixBmin1-1^%1ixB^S,mag(1)) &
+                                * (x(ixBmin1-1^%1ixB^S,1)/x(i^%1ixB^S,1))**2.0d0
+
+          ! Btheta = constant
+          w(i^%1ixB^S,mag(2)) = w(ixBmin1-1^%1ixB^S,mag(2))
+
+          ! r*Bphi = constant
+          w(i^%1ixB^S,mag(3)) = w(ixBmin1-1^%1ixB^S,mag(3)) &
+                                * x(ixBmin1-1^%1ixB^S,1) / x(i^%1ixB^S,1)
+        endif
+      enddo
+
+      if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
     case default
       call mpistop("BC not specified")
