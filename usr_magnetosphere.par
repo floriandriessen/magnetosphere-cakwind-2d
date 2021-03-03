@@ -8,11 +8,11 @@
 !=================================================
 
 &filelist
-  base_filename  = 'test/ms'
-  saveprim       = .true.
-  autoconvert    = .true.
-  nwauxio        = 2
-  convert_type   = 'vtuBCCmpi'
+  base_filename = 'test/ms'
+  saveprim      = .true.
+  autoconvert   = .true.
+  nwauxio       = 2
+  convert_type  = 'vtuBCCmpi'
 /
 
 &savelist
@@ -36,7 +36,7 @@
 &boundlist
   ! rho, mom1, mom2, mom3, b1, b2, b3
   typeboundary_min1 = 7*'special'
-  typeboundary_max1 = 7*'cont'
+  typeboundary_max1 = 7*'special'
   typeboundary_min2 = 7*'pole'
   typeboundary_max2 = 7*'pole'
 /
