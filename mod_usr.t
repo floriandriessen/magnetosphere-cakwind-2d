@@ -410,7 +410,8 @@ contains
           ! r*r*(B0r + delta Br) = constant
           w(i^%1ixB^S,mag(1)) = (dbpole * cos(x(ixBmax1+1^%1ixB^S,2)) &
                                   + w(ixBmax1+1^%1ixB^S,mag(1))) &
-                                / x(i^%1ixB^S,1)**2 - block%B0(i^%1ixB^S,1,0)
+                                 * (drstar / x(i^%1ixB^S,1))**2.0d0 &
+                                 - block%B0(i^%1ixB^S,1,0)
 
           ! delta Btheta
           w(i^%1ixB^S,mag(2)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(2)) &
@@ -426,8 +427,8 @@ contains
       else
         do i = ixBmax1,ixBmin1,-1
           ! r*r*Br = constant
-          w(i^%1ixB^S,mag(1)) = (dbpole * cos(x(ixBmax1+1^%1ixB^S,2))) &
-                                 / x(i^%1ixB^S,1)**2.0d0
+          w(i^%1ixB^S,mag(1)) = dbpole * cos(x(ixBmax1+1^%1ixB^S,2)) &
+                                * (drstar / x(i^%1ixB^S,1))**2.0d0
 
           ! Btheta
           w(i^%1ixB^S,mag(2)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(2)) &
