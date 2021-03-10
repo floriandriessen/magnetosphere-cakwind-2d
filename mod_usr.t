@@ -223,7 +223,8 @@ contains
     resc = 2.0d0**(1.0d0/3.0d0) * rkep
 
     call make_dimless_vars()
-    call read_initial_oned_cak(cakfile)
+    
+    if (.not. resume_previous_run) call read_initial_oned_cak(cakfile)
 
     if (mype == 0) then
       ! Store overview in a log file for easy reference
