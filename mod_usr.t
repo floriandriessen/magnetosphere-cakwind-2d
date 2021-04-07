@@ -365,6 +365,9 @@ contains
 
     call mhd_to_conserved(ixI^L,ixO^L,w,x)
 
+    ! Initialise extra vars at 0 since some compilers fill with crap
+    w(ixO^S,nw-nwextra+1:nw) = 0.0d0
+
   end subroutine initial_conditions
 
 !===============================================================================
