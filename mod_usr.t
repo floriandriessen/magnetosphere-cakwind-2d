@@ -110,7 +110,7 @@ module mod_usr
 
   ! Additional names for wind and statistical variables
   integer :: my_gcak, my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav
-  integer :: my_vpolav, my_vpol2av
+  integer :: my_vpolav, my_vpol2av, my_tav
 
   ! Arrays required to read and store 1D profile from file
   real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
@@ -153,6 +153,8 @@ contains
     my_vr2av   = var_set_extravar("vrad2_av", "vrad2_av")
     my_vpol2av = var_set_extravar("vtheta2_av", "vtheta2_av")
     my_rhovrav = var_set_extravar("rho_vrad_av", "rho_vrad_av")
+
+    if (mhd_energy) my_tav = var_set_extravar("twind_av", "twind_av")
 
   end subroutine usr_init
 
@@ -360,6 +362,13 @@ contains
       w(ixO^S,mag(3)) = 0.0d0
     endif
 
+
+
+    ! NEW adiabatic
+    if (mhd_energy) w(ixO^S,p_) = w(ixO^S,rho_)
+
+
+
     ! If using Dedner+(2002) divergence cleaning
     if (mhd_glm) w(ixO^S,psi_) = 0.0d0
 
@@ -447,6 +456,15 @@ contains
         enddo
       endif
 
+
+
+      ! NEW NEW
+      ! Density is fixed, so per ideal gas law also the pressure
+      if (mhd_energy) w(ixB^S,p_) = w(ixB^S,rho_)
+
+
+
+
       ! When using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
@@ -470,6 +488,13 @@ contains
         w(i^%1ixB^S,mom(3)) = &
                 (w(ixBmin1-1^%1ixB^S,mom(3)) / w(ixBmin1-1^%1ixB^S,rho_)) &
                 * (x(ixBmin1-1^%1ixB^S,1) / x(i^%1ixB^S,1)) * w(i^%1ixB^S,rho_)
+
+
+        ! NEW NEW
+        ! energy = constant
+        if (mhd_energy) w(i^%1ixB^S,e_) = w(ixBmin1-1^%1ixB^S,e_)
+
+
 
         !=================
         ! Tanaka splitting
@@ -535,7 +560,7 @@ contains
     ! Local variables
     real(8) :: vr(ixI^S), rho(ixI^S)
     real(8) :: dvdr_up(ixO^S), dvdr_down(ixO^S), dvdr_cent(ixO^S), dvdr(ixO^S)
-    real(8) :: gcak(ixO^S), beta_fd(ixO^S), fdfac(ixO^S)
+    real(8) :: gcak(ixO^S), beta_fd(ixO^S), fdfac(ixO^S), temperature(ixI^S)
     real(8) :: fac, fac1, fac2
     integer :: jx^L, hx^L
 
@@ -607,6 +632,26 @@ contains
 
     ! Update conservative vars: w = w + qdt*gsource
     w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S) * wCT(ixO^S,rho_)
+
+
+    ! NEW NEW
+    ! Update total energy e = e + vCT*rhoCT*qdt*gsource
+    if (mhd_energy) then
+      w(ixO^S,e_) = w(ixO^S,e_) + qdt * gcak(ixO^S) * wCT(ixO^S,mom(1))
+    endif
+
+    ! Impose fixed floor temperature when doing adiabatic
+    if (mhd_energy .and. (.not. mhd_radiative_cooling)) then
+
+      call mhd_get_pthermal(w,x,ixI^L,ixO^L,temperature)
+      temperature(ixO^S) = temperature(ixO^S) / w(ixO^S,rho_)
+
+      where (temperature(ixO^S) < dtwind)
+        w(ixO^S,e_) = w(ixO^S,rho_)*dtwind / (mhd_gamma - 1.0d0) &
+                      + 0.5d0 * w(ixO^S,mom(1))**2.0d0 / w(ixO^S,rho_) &
+                      + 0.5d0 * sum(w(ixO^S,mag(:))**2, dim=ndim+1)
+      endwhere
+    endif
 
   end subroutine line_force
 
@@ -724,6 +769,13 @@ contains
       w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)*tnormp
       w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av) + dt * w(ixO^S,mom(2))**2.0d0
       w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)/tnormc
+
+      ! Average wind temperature
+      if (mhd_energy) then
+        w(ixO^S,my_tav) = w(ixO^S,my_tav)*tnormp
+        w(ixO^S,my_tav) = w(ixO^S,my_tav) + dt * w(ixO^S,p_)/w(ixO^S,rho_)
+        w(ixO^S,my_tav) = w(ixO^S,my_tav)/tnormc
+      endif
 
       call mhd_to_conserved(ixI^L,ixO^L,w,x)
     endif

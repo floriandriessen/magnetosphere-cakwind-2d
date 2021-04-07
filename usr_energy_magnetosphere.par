@@ -1,0 +1,94 @@
+!=================================================
+! Project : 2D adiabatic, magnetic CAK wind
+!
+! Aim     : start from a 1D relaxed CAK wind to
+!           study wind-magnetosphere interaction
+!
+! Config  : setup.pl -d=2
+!=================================================
+
+&filelist
+  base_filename = 'test/ms'
+  saveprim      = .true.
+  autoconvert   = .true.
+  nwauxio       = 2
+  convert_type  = 'vtuBCCmpi'
+/
+
+&savelist
+  itsave(1,1) = 0
+  itsave(1,2) = 0
+  ditsave_log = 1000
+  dtsave_dat  = 5.0d-3
+/
+
+&stoplist
+  dtmin    = 1.0d-20
+  time_max = 0.5d0
+/
+
+&methodlist
+  time_integrator = 'twostep'
+  flux_scheme     = 'hll'
+  limiter         = 'vanleer'
+  check_small_values  = .true.
+  small_values_method = 'replace'
+  small_pressure      = 1.0d-10
+  small_density       = 1.0d-10
+/
+
+&boundlist
+  ! rho, mom1, mom2, mom3, e, b1, b2, b3
+  typeboundary_min1 = 8*'special'
+  typeboundary_max1 = 8*'cont'
+  typeboundary_min2 = 8*'pole'
+  typeboundary_max2 = 8*'pole'
+/
+
+&meshlist
+  domain_nx1     = 280 
+  domain_nx2     = 120
+  block_nx1      = 70 
+  block_nx2      = 30 
+  xprobmin1      = 1.0d0 
+  xprobmax1      = 7.0d0 
+  xprobmin2      = 0.0d0
+  xprobmax2      = 0.5d0
+  stretch_dim(1) = 'uni'
+  qstretch_baselevel(1) = 1.02
+/
+
+&paramlist
+  courantpar = 0.3d0 
+/
+
+&mhd_list
+  mhd_gravity = .true.
+  mhd_energy  = .true.
+  mhd_gamma   = 1.666667d0
+  typedivbfix = 'powell'
+  B0field     = .false.	
+  mhd_radiative_cooling = .true.  
+/
+
+&rc_list
+  coolcurve  = 'MB'
+  coolmethod = 'exact'
+  ncool      = 10000
+  Tfix       = .true.
+  tlow       = 1.0d0
+/ 
+
+&star_list
+  cakfile  = '../relaxed-CAKwinds/zetapup-fd1.blk'
+  lstar    = 8.0d5
+  mstar    = 50.0d0
+  rstar    = 20.0d0
+  twind    = 4.0d4
+  imag     = -5.0d0    
+  rhobound = 1.2d-11
+  alpha    = 0.65d0
+  Qbar     = 2000.0d0
+  tstat    = 5.0d5
+  Wrot     = 0.0d0
+/
