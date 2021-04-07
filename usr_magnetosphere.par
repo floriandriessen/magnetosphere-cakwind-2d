@@ -16,14 +16,14 @@
 /
 
 &savelist
-  itsave(1,1) = 0       ! save on startup log output
-  itsave(1,2) = 0       ! save on startup normal output
-  ditsave_log = 1000	! save every xxx iterations to the log file
-  dtsave_dat  = 5.0d-3	! save dat file after each xxx unit time
+  itsave(1,1) = 0
+  itsave(1,2) = 0
+  ditsave_log = 1000
+  dtsave_dat  = 5.0d-3
 /
 
 &stoplist
-  dtmin    = 1.d-20
+  dtmin    = 1.0d-20
   time_max = 1.0d0
 /
 
@@ -67,7 +67,7 @@
 /
 
 &star_list
-  cakfile  = 'cak0021.blk'
+  cakfile  = '../relaxed-CAKwinds/zetapup-fd1.blk'
   lstar    = 8.0d5
   mstar    = 50.0d0
   rstar    = 20.0d0
