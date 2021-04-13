@@ -31,10 +31,6 @@
   time_integrator = 'twostep'
   flux_scheme     = 'hll'
   limiter         = 'vanleer'
-  check_small_values  = .true.
-  small_values_method = 'replace'
-  small_pressure      = 1.0d-10
-  small_density       = 1.0d-10
 /
 
 &boundlist
@@ -72,7 +68,7 @@
 /
 
 &rc_list
-  coolcurve  = 'MB'
+  coolcurve  = 'SPEX'
   coolmethod = 'exact'
   ncool      = 10000
   Tfix       = .true.
