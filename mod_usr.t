@@ -118,7 +118,9 @@ module mod_usr
 
 contains
 
-  !> This routine should set user methods, and activate the physics module
+  !======================================================================
+  ! This routine should set user methods, and activate the physics module
+  !======================================================================
   subroutine usr_init()
 
     call set_coordinate_system("spherical_2.5D")
@@ -159,12 +161,10 @@ contains
 
   end subroutine usr_init
 
-!===============================================================================
-
+  !========================================================
+  ! Read in the usr.par file with the problem specific list
+  !========================================================
   subroutine usr_params_read(files)
-    !
-    ! Read in the usr.par file with the problem specific list
-    !
 
     ! Subroutine argument
     character(len=*), intent(in) :: files(:)
@@ -188,14 +188,10 @@ contains
 
   end subroutine usr_params_read
 
-!===============================================================================
-
+  !====================================================================
+  ! Compute some quantities of interest (in CGS) before making unitless
+  !====================================================================
   subroutine initglobaldata_usr
-    !
-    ! Compute some quantities of interest (in CGS) before making unitless
-    !
-    character(len=8)  :: todayis
-    character(len=99) :: inputlog
 
     ! Stellar structure
     gammae = kappae * lstar/(4.d0*dpi * Ggrav * mstar * const_c)
@@ -242,13 +238,11 @@ contains
 
   end subroutine initglobaldata_usr
 
-!===============================================================================
-
+  !==========================================================================
+  ! Initial conditions start from spherically symmetric 1D relaxed CAK wind
+  ! and dipole field is set here or in usr_set_B0 when doing Tanaka splitting
+  !==========================================================================
   subroutine initial_conditions(ixI^L,ixO^L,w,x)
-    !
-    ! Initial conditions start from spherically symmetric 1D relaxed CAK wind
-    ! and dipole field is set here or in usr_set_B0 when doing Tanaka splitting
-    !
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L
@@ -295,12 +289,10 @@ contains
 
   end subroutine initial_conditions
 
-!===============================================================================
-
+  !=============================================================================
+  ! Special user boundary conditions at inner (+ possibly outer) radial boundary
+  !=============================================================================
   subroutine special_bound(qt,ixI^L,ixB^L,iB,w,x)
-    !
-    ! Modified boundary values only at inner and outer radial boundary
-    !
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixB^L, iB
@@ -375,7 +367,6 @@ contains
       ! Density is fixed, so per ideal gas law also the pressure
       if (mhd_energy) w(ixB^S,p_) = w(ixB^S,rho_)
 
-      ! When using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
       call mhd_to_conserved(ixI^L,ixI^L,w,x)
@@ -450,12 +441,10 @@ contains
 
   end subroutine special_bound
 
-!===============================================================================
-
+  !=======================================================================
+  ! Extra source using the analytical CAK line force in Gayley's formalism
+  !=======================================================================
   subroutine line_force(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
-    !
-    ! Compute the analytical CAK line force using Gayley's formalism
-    !
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L, iw^LIM
@@ -546,13 +535,11 @@ contains
 
   end subroutine line_force
 
-!===============================================================================
-
+  !========================================================================
+  ! After first iteration the usr_source routine has been called, take now
+  ! also timestep from CAK line force into account
+  !========================================================================
   subroutine special_dt(w,ixI^L,ixO^L,dtnew,dx^D,x)
-    !
-    ! After first iteration the usr_source routine has been called, take now
-    ! also timestep from CAK line force into account
-    !
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L
@@ -573,13 +560,11 @@ contains
 
   end subroutine special_dt
 
-!===============================================================================
-
+  !===================================================================
+  ! Combine stellar gravity and continuum electron scattering into an
+  ! effective gravity using Eddington's gamma
+  !===================================================================
   subroutine effective_gravity(ixI^L,ixO^L,wCT,x,gravity_field)
-    !
-    ! Combine stellar gravity and continuum electron scattering into an
-    ! effective gravity using Eddington's gamma
-    !
 
     ! Subroutine arguments
     integer, intent(in)  :: ixI^L, ixO^L
@@ -594,20 +579,13 @@ contains
 
   end subroutine effective_gravity
 
-!===============================================================================
-
+  !==========================================================================
+  ! Routine computes the time-averaged statistical quantity <X> via:
+  !   <X>_i = <X>_i-1 + dt * X_i
+  ! where <X> is the average of variable X and i','i-1' are the current and
+  ! previous timestep respectively
+  !==========================================================================
   subroutine compute_stats(igrid,level,ixI^L,ixO^L,qt,w,x)
-    !
-    ! Routine computes the time-averaged statistical quantity <X> via:
-    !
-    !  <X>_i = <X>_i-1 + dt * X_i
-    !
-    ! where <X> is the average of variable X and i','i-1' are the current and
-    ! previous timestep respectively
-    !
-    ! NOTE: w at global_time^(n+1) due to advection, but w-nwextra and
-    !       global_time still at global_time^n => corrected for in time-weights
-    !
 
     ! Subroutine arguments
     integer, intent(in)    :: igrid, level, ixI^L, ixO^L
@@ -673,12 +651,10 @@ contains
 
   end subroutine compute_stats
 
-!===============================================================================
-
+  !======================================================================
+  ! Computes and stores additional variables of interest in convert stage
+  !======================================================================
   subroutine set_extravar_output(ixI^L,ixO^L,w,x,normconv)
-    !
-    ! Computes and stores additional variables of interest
-    !
 
     ! Subroutine arguments
     integer, intent(in) :: ixI^L, ixO^L
@@ -706,24 +682,21 @@ contains
 
   end subroutine set_extravar_output
 
-!===============================================================================
-
+  !==================================================================
+  ! Additional auxiliary io variables: Alfven velocity, divergence B
+  !==================================================================
   subroutine set_extravarnames_output(varnames)
-    !
-    ! Newly added variables: Alfven velocity, divergence B
-    !
+
     character(len=*) :: varnames
     varnames = 'vAlf divb'
 
   end subroutine set_extravarnames_output
 
-!===============================================================================
-
+  !=======================================================================
+  ! Add a steady (time-independent) potential dipole background field with
+  ! polar field strength set by dimensionless 'dbpole'
+  !=======================================================================
   subroutine make_dipoleboy(ixI^L,ixO^L,x,wB0)
-    !
-    ! Add a steady (time-independent) potential dipole background field with
-    ! polar field strength set by dimensionless 'dbpole'
-    !
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L
@@ -736,8 +709,9 @@ contains
 
   end subroutine make_dipoleboy
 
-!===============================================================================
-
+  !=========================================================================
+  ! Normalise relevant quantities to be used in the code + make log overview
+  !=========================================================================
   subroutine make_dimless_and_log_vars()
 
     ! Local variables
@@ -768,7 +742,6 @@ contains
     dvrot     = vrot/unit_velocity
 
     if (mype == 0) then
-      ! Store overview in a log file for easy reference
       inputlog = trim(base_filename) // '_param_overview.log'
       open(unit=94,file=inputlog)
 
@@ -853,15 +826,11 @@ contains
 
   end subroutine make_dimless_and_log_vars
 
-!===============================================================================
-
+  !=========================================================================
+  ! Read in a relaxed 1D CAK profile stored in a .blk file that is produced
+  ! with the CAKwind_1d code. Modified version of AMRVAC mod_oneblock module
+  !=========================================================================
   subroutine read_initial_oned_cak(filename)
-    !
-    ! Read in a relaxed 1D CAK profile stored in a .blk file that is produced
-    ! with the CAKwind_1d code
-    !
-    ! This routine is a modified version from the AMRVAC mod_oneblock module
-    !
 
     ! Subroutine argument
     character(len=*), intent(in) :: filename
@@ -871,9 +840,7 @@ contains
     real(8) :: tmp, tmp1
     logical :: alive
 
-    !======================
     ! Root does the reading
-    !======================
     if (mype == 0) then
       inquire(file=filename,exist=alive)
 
@@ -907,9 +874,7 @@ contains
 
     call MPI_BARRIER(icomm,ierrmpi)
 
-    !===========================
     ! Broadcast what mype=0 read
-    !===========================
     if (npe > 1) then
       call MPI_BCAST(ncells,1,MPI_INTEGER,0,icomm,ierrmpi)
 
