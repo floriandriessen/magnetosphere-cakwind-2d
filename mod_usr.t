@@ -459,16 +459,9 @@ contains
     real(8) :: fac, fac1, fac2
     integer :: jx^L, hx^L
 
-    !========================================================================
-    ! Convert to primitives
-
-    ! Define the time-centred, radial velocity from the radial momentum
-    vr(ixI^S) = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_)
-
-    ! Time-centred density
+    ! Define time-centred, radial velocity from the radial momentum and density
+    vr(ixI^S)  = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_)
     rho(ixI^S) = wCT(ixI^S,rho_)
-
-    !========================================================================
 
     ! Index +1 (j) and index -1 (h) in radial direction; kr(dir,dim)=1, dir=dim
     jx^L=ixO^L+kr(1,^D);
@@ -506,13 +499,13 @@ contains
     elsewhere
       fdfac = 1.0d0 - 0.5d0*alpha*beta_fd &
                       * (1.0d0 + 1.0d0/3.0d0 * (1.0d0 - alpha)*beta_fd)
-    end where
+    endwhere
 
     where (fdfac < smalldouble)
       fdfac = 0.0d0
     elsewhere (fdfac > 5.0d0)
       fdfac = 1.0d0
-    end where
+    endwhere
 
     ! Calculate CAK line-force and correct for finite extend stellar disk
     fac1 = 1.0d0/(1.0d0 - alpha) * dkappae * dlstar*Qbar/(4.0d0*dpi * dclight)
