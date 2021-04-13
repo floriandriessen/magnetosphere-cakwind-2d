@@ -74,6 +74,7 @@
 ! (April 2021) -- Flo
 !   > no more pso-state in statistics, now only current since averaging is each
 !     iteration such that weight with previous iteration unnecessary
+!   > prohibit pure adiabatic cooling as it crashes, but is also unrealistic
 !===============================================================================
 
 module mod_usr
@@ -110,7 +111,7 @@ module mod_usr
 
   ! Additional names for wind and statistical variables
   integer :: my_gcak, my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav
-  integer :: my_vpolav, my_vpol2av
+  integer :: my_vpolav, my_vpol2av, my_tav
 
   ! Arrays required to read and store 1D profile from file
   real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
@@ -153,6 +154,8 @@ contains
     my_vr2av   = var_set_extravar("vrad2_av", "vrad2_av")
     my_vpol2av = var_set_extravar("vtheta2_av", "vtheta2_av")
     my_rhovrav = var_set_extravar("rho_vrad_av", "rho_vrad_av")
+
+    if (mhd_energy) my_tav = var_set_extravar("twind_av", "twind_av")
 
   end subroutine usr_init
 
@@ -317,6 +320,10 @@ contains
       call mpistop('CT disabled. Gives strange results for this problem.')
     endif
 
+    if (mhd_energy .and. (.not. mhd_radiative_cooling)) then
+      call mpistop('Pure adiabatic cooling not supported.')
+    endif
+
   end subroutine initglobaldata_usr
 
 !===============================================================================
@@ -359,6 +366,8 @@ contains
 
       w(ixO^S,mag(3)) = 0.0d0
     endif
+
+    if (mhd_energy) w(ixO^S,p_) = w(ixO^S,rho_)
 
     ! If using Dedner+(2002) divergence cleaning
     if (mhd_glm) w(ixO^S,psi_) = 0.0d0
@@ -447,6 +456,9 @@ contains
         enddo
       endif
 
+      ! Density is fixed, so per ideal gas law also the pressure
+      if (mhd_energy) w(ixB^S,p_) = w(ixB^S,rho_)
+
       ! When using Dedner+(2002) divergence cleaning
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
@@ -470,6 +482,9 @@ contains
         w(i^%1ixB^S,mom(3)) = &
                 (w(ixBmin1-1^%1ixB^S,mom(3)) / w(ixBmin1-1^%1ixB^S,rho_)) &
                 * (x(ixBmin1-1^%1ixB^S,1) / x(i^%1ixB^S,1)) * w(i^%1ixB^S,rho_)
+
+        ! energy = constant
+        if (mhd_energy) w(i^%1ixB^S,e_) = w(ixBmin1-1^%1ixB^S,e_)
 
         !=================
         ! Tanaka splitting
@@ -608,6 +623,11 @@ contains
     ! Update conservative vars: w = w + qdt*gsource
     w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S) * wCT(ixO^S,rho_)
 
+    ! Update total energy e = e + vCT*rhoCT*qdt*gsource
+    if (mhd_energy) then
+      w(ixO^S,e_) = w(ixO^S,e_) + qdt * gcak(ixO^S) * wCT(ixO^S,mom(1))
+    endif
+
   end subroutine line_force
 
 !===============================================================================
@@ -724,6 +744,13 @@ contains
       w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)*tnormp
       w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av) + dt * w(ixO^S,mom(2))**2.0d0
       w(ixO^S,my_vpol2av) = w(ixO^S,my_vpol2av)/tnormc
+
+      ! Average wind temperature
+      if (mhd_energy) then
+        w(ixO^S,my_tav) = w(ixO^S,my_tav)*tnormp
+        w(ixO^S,my_tav) = w(ixO^S,my_tav) + dt * w(ixO^S,p_)/w(ixO^S,rho_)
+        w(ixO^S,my_tav) = w(ixO^S,my_tav)/tnormc
+      endif
 
       call mhd_to_conserved(ixI^L,ixO^L,w,x)
     endif
