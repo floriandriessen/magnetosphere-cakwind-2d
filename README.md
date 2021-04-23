@@ -1,8 +1,8 @@
 
 
-# 2D CAK Wind-Magnetosphere interaction
+# 2D-2.5D CAK Wind-Magnetosphere interaction
 
-Make MHD model of the radiation-driven wind of a magnetic O-star interacting with its magnetosphere using MPI-AMRVAC. The magnetosphere can be dynamical or centrifugal. The stellar wind is spherically symmetric and according to CAK theory including finite-disk correction. In the current setup an isothermal MHD flow is assumed.
+Make MHD model of the radiation-driven wind of a magnetic O-star interacting with its magnetosphere using MPI-AMRVAC. The magnetosphere can be dynamical or centrifugal. The stellar wind is spherically symmetric and according to CAK theory including finite-disk correction. Both isothermal and adiabatic + radiative cooling simulations are supported.
 
 ## Setup
 
@@ -29,14 +29,43 @@ To make a CM the star should be rotating fast and have a strong magnetic confine
 
 Simulations can be run using included .par files. Specific stellar and wind parameters are set in the `star_list` inside the .par file. 
 
-Several options exist for doing the MHD part. So far no Constrained Transport is implemented due to numerical issues in the magnetosphere. The code runs with other divergence cleaners and **Powell** or **GLM** are recommended. **NOTE**: if you use the GLM cleaner then the additional variable 'psi' will be added in the output. In order to not output temporary arrays that are used for statistical purpose you should increase the index of `w_write` in the `filelist` with +1. These indices index the position of a variable in the AMRVAC w-array starting to count from the density index.
+Several options exist for doing the MHD part. So far no Constrained Transport is implemented due to numerical issues in the magnetosphere. The code runs with other divergence cleaners and **Powell** or **GLM** are recommended. **NOTE**: if you use the GLM cleaner then the additional variable 'psi' will be added in the output.
 
-It might be beneficial in some user cases to turn on Tanaka's magnetic field splitting. Tanaka's method is particularly recommended for highly magnetic flows (magnetic confinement > 1) and can be switched on in `mhd_list` via
+It might be beneficial in some user cases to turn on Tanaka's magnetic field splitting (added stability + in adiabatic MHD reduced probability of getting negative pressures). Tanaka's method is particularly recommended for highly magnetic flows (magnetic confinement >> 1) and can be switched on in `mhd_list` via
 ```
 B0field = .true.
 ```
 
 and in the code the `make_dipoleboy` subroutine is called instead to add a global, time-independent background dipole field. 
+
+## Additional physics options
+
+### Adiabatic MHD with radiative cooling
+
+The possibility exists to take into account the full MHD energy equation including radiative cooling in the wind-magnetosphere dynamics. A separate .par file exists for this option. Essentially in the `mhd_list` additional specifications are made
+```
+mhd_energy = .true.
+mhd_radiative_cooling = .true.
+```
+
+It is important to stress that both switches have to be logically true. Therefore, pure adiabatic MHD is **not supported** and is untested (as a matter of fact a few tests showed it is hard to get this to work without crash).
+
+For the radiative cooling an additional `rc_list` is included specifying some parameters related to the cooling table. I suggest to always take the 'SPEX' cooling curve since this is presently the best on the market for our type of temperature ranges. An alternative can be the Bailey & MacDonald curve 'MB' which has been used in previous magnetic CAK wind models including energy transfer.
+
+### Rotating frame
+
+In cases of fast rotation (e.g. CMs in 2.5D) there is the option to go into the rotating frame and include additional fictitious forces (centrifugal + Coriolis). This physics is directly implemented into the `mod_mhd_phys.t` file as geometrical source terms. It relies on the `mod_rotating_frame` module of AMRVAC that is also available in the HD physics option of AMRVAC. To use this
+```
+&mhd_list
+  mhd_rotating_frame = .true.
+
+&rotating_frame_list
+  omega_frame = 1.0d0
+```
+
+The parameter `omega_frame` is overwritten in the `initglobaldata_usr` routine based on what rotational velocity is associated with `Wrot`.
+
+**NOTE: this piece of physics does not exist in the standard AMRVAC branch**. In case you need this physics, ask Flo for the appropriate modifications.
 
 ## Extending a simulation
 
@@ -105,9 +134,11 @@ Additionally, a `star_list` is specified in the .par file containing variables s
 
 The `tstat` should generally be set to a time where the wind reaches a time and state where initial perturbations have left the grid. If not, the statistical averaging will contain remnants from these perturbations. 
 
-The computation of an averaged value <X> is done in the `compute_stats` routine. Once entered for the first time, the routine calls the w-array from the previous iteration of each block (stored in `pso(igrid)` by AMRVAC) and assigns them to temporary placeholders. For proper output during the simulation; after each computation of <X> a normalisation occurs with the current time-weight `tnormc` but in the next iteration we have to 'un-normalise' it back in time `tnormp` to compute the current timestep <X> again.
+The computation of an averaged value <X> is done in the `compute_stats` routine. Since Spring 2021 it does a simplified averaging relying only on the current hydro state and not on the previous anymore. Since averages are computed every iteration variations will smoothen out quickly, as such an additional weighting with previous iteration hydro state is obsolete.
 
-The routine is called at the **end** of the iteration (i.e. after the advection has been performed) and the w-array is thus evolved. However, the *nwextra* variables (defined in the code with `var_set_extravar()`) are never evolved and so they are still at the state before advection (i.e. previous timestep). This is important in order to do proper time-weighting during the simulation. If wished for, it is straightforward to also include here new quantities of interest. **Note** that although the routine is called each iteration, the actual values are only printed every `dtsave_dat`. 
+For proper behaviour during the simulation; after each computation of <X> a normalisation occurs with the current time-weight `tnormc` (required for correct output) but in the next iteration we have to 'un-normalise' it back in time `tnormp` to compute the new <X> again.
+
+The routine is called at the **end** of the iteration (i.e. after the advection has been performed) and the w-array is thus evolved. However, the *nwextra* variables (defined in the code with `var_set_extravar()`) are never evolved and so they are still at the state before advection (i.e. previous timestep). If wished for, it is straightforward to also include here new quantities of interest. **Note** that although the routine is called each iteration, the actual values are only printed every `dtsave_dat`.
 
 ## Notice
 
