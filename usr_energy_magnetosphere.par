@@ -59,12 +59,13 @@
 /
 
 &mhd_list
-  mhd_gravity = .true.
-  mhd_energy  = .true.
-  mhd_gamma   = 1.666667d0
-  typedivbfix = 'powell'
-  B0field     = .false.	
+  mhd_gravity           = .true.
+  mhd_energy            = .true.
+  mhd_gamma             = 1.666667d0
   mhd_radiative_cooling = .true.  
+  mhd_rotating_frame    = .false.
+  typedivbfix           = 'powell'
+  B0field               = .false.	
 /
 
 &rc_list
@@ -74,6 +75,11 @@
   Tfix       = .true.
   tlow       = 1.0d0
 / 
+
+&rotating_frame_list
+  ! overwritten in the mod_usr.t based on rotational velocity
+  omega_frame = 1.0d0
+/
 
 &star_list
   cakfile  = '../relaxed-CAKwinds/zetapup-fd1.blk'

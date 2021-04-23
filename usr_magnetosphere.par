@@ -8,7 +8,7 @@
 !=================================================
 
 &filelist
-  base_filename = 'test/ms'
+  base_filename = 'fict-force/ms'
   saveprim      = .true.
   autoconvert   = .true.
   nwauxio       = 2
@@ -24,7 +24,7 @@
 
 &stoplist
   dtmin    = 1.0d-20
-  time_max = 1.0d0
+  time_max = 0.5d0
 /
 
 &methodlist
@@ -59,11 +59,17 @@
 /
 
 &mhd_list
-  mhd_gravity = .true.
-  mhd_energy  = .false.
-  mhd_gamma   = 1.0d0
-  typedivbfix = 'powell'
-  B0field     = .false.	
+  mhd_gravity        = .true.
+  mhd_energy         = .false.
+  mhd_gamma          = 1.0d0
+  mhd_rotating_frame = .false.
+  typedivbfix        = 'powell'
+  B0field            = .false.	
+/
+
+&rotating_frame_list
+  ! overwritten in the mod_usr.t based on rotational velocity
+  omega_frame = 1.0d0
 /
 
 &star_list
@@ -72,11 +78,10 @@
   mstar    = 50.0d0
   rstar    = 20.0d0
   twind    = 4.0d4
-  imag     = -0.1d0    
+  imag     = -0.0d0    
   rhobound = 1.2d-11
   alpha    = 0.65d0
   Qbar     = 2000.0d0
   tstat    = 5.0d5
-  Wrot     = 0.0d0
-  rotframe = .false.
+  Wrot     = 0.5d0
 /
