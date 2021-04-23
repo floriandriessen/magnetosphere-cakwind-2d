@@ -75,6 +75,7 @@
 !   > no more pso-state in statistics, now only current since averaging is each
 !     iteration such that weight with previous iteration unnecessary
 !   > prohibit pure adiabatic cooling as it crashes, but is also unrealistic
+!   > inclusion of rotating frame with fictitious forces + changed special_dt
 !===============================================================================
 
 module mod_usr
@@ -262,9 +263,10 @@ contains
       w(ir,:,mom(1)) = woneblock(irb,2)
     enddo
 
-    ! No polar velocity, in azimuth rigid rotation for full grid (stabilizing)
+    ! No polar velocity
     w(ixO^S,mom(2)) = 0.0d0
 
+    ! In azimuth no velocity (rotating frame) or rigid rotation for full grid
     if (rotframe) then
       w(ixO^S,mom(3)) = 0.0d0
     else
@@ -505,28 +507,29 @@ contains
     real(8) :: tdum(ixO^S), tdum1(ixO^S), tdum2(ixO^S), dt_cak
     real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
 
-
-    fcent(ixO^S,1)   = -sin(x(ixO^S,2))**2.0d0 * x(ixO^S,1)
-    fcent(ixO^S,2)   = -sin(x(ixO^S,2)) * cos(x(ixO^S,2)) * x(ixO^S,1)
-    fcent(ixO^S,3)   = 0.0d0
-    fcent(ixO^S,1:3) = dOmegarot**2.0d0 * fcent(ixO^S,1:3)
-
-    ! Coriolis force
-    fcor(ixO^S,1)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * sin(x(ixO^S,2))
-    fcor(ixO^S,2)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * cos(x(ixO^S,2))
-    fcor(ixO^S,3)   = w(ixO^S,mom(1))/w(ixO^S,rho_) * sin(x(ixO^S,2)) &
-                      + w(ixO^S,mom(2))/w(ixO^S,rho_) * cos(x(ixO^S,2))
-    fcor(ixO^S,1:3) = 2.0d0*dOmegarot * fcor(ixO^S,1:3)
-
+    if (rotframe) then
+      call get_fict_forces(ixI^L,ixO^L,w,x,fcent,fcor)
+    else
+      fcent(ixO^S,:) = 0.0d0
+      fcor(ixO^S,:)  = 0.0d0
+    endif
 
     ! Get dt from line force that is saved in the w-array in nwextra slot
-    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak) + (fcent(ixO^S,1) + fcor(ixO^S,1))) )
-    tdum1(ixO^S) = sqrt( block%dx(ixO^S,1) * block%dx(ixO^S,2) / abs((fcent(ixO^S,2) + fcor(ixO^S,2))) )
-    tdum2(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2)) * block%dx(ixO^S,3) / abs(fcor(ixO^S,3)) )
+    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) &
+                        / abs(w(ixO^S,my_gcak) + fcent(ixO^S,1) + fcor(ixO^S,1)))
+    tdum1(ixO^S) = sqrt( block%dx(ixO^S,1) * block%dx(ixO^S,2) &
+                         / abs((fcent(ixO^S,2) + fcor(ixO^S,2))) )
+    !tdum2(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2)) &
+    !                     * block%dx(ixO^S,3) / abs(fcor(ixO^S,3)) )
+    ! in 2D or 2.5D there is no phi-direction, but there is phi_ direction
+    ! how does AMRVAC handle then time step in phi??
+    ! perhaps erroneous fix below, but should have modest influence since
+    ! major contribution fictitious force is not toroidal direction in 2D
+    tdum2(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2)) &
+                         / abs(fcor(ixO^S,3)) )
 
-    tdum(ixO^S) = tdum(ixO^S) + tdum1(ixO^S) + tdum2(ixO^S)
-
-    dt_cak      = courantpar * minval(tdum(ixO^S))
+    dt_cak = courantpar * min(minval(tdum(ixO^S)),minval(tdum1(ixO^S)),&
+                              minval(tdum2(ixO^S)))
 
     if (it >= 1) then
       dtnew = min(dtnew,dt_cak)
@@ -647,10 +650,7 @@ contains
       w(ixO^S,nw+1) = sqrt(sum(w(ixO^S,mag(:))**2, dim=ndim+1)/w(ixO^S,rho_))
     endif
 
-    !
-    ! Output divB using AMRVAC routine that computes it for us
-    ! For Tanaka splitting this will be div B1 (not possible to get full)
-    !
+    ! Output divB, for Tanaka splitting this will be divB1
     call get_divb(w,ixI^L,ixO^L,divbboy)
     w(ixO^S,nw+2) = divbboy(ixO^S)
 
@@ -686,11 +686,11 @@ contains
   !===================================================================
   ! Compute fictitious forces on spherical grid when in rotating frame
   !===================================================================
-  subroutine get_fict_forces(ixI^L,ixO^L,wCT,x,fcent,fcor)
+  subroutine get_fict_forces(ixI^L,ixO^L,w,x,fcent,fcor)
 
     ! Subroutine arguments
     integer, intent(in)  :: ixI^L, ixO^L
-    real(8), intent(in)  :: x(ixI^S,1:ndim), wCT(ixI^S,1:nw)
+    real(8), intent(in)  :: x(ixI^S,1:ndim), w(ixI^S,1:nw)
     real(8), intent(out) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
 
     ! Centrigufal force (radial=1, poloidal=2, toroidal=3)
@@ -700,10 +700,10 @@ contains
     fcent(ixO^S,1:3) = dOmegarot**2.0d0 * fcent(ixO^S,1:3)
 
     ! Coriolis force
-    fcor(ixO^S,1)   = -wCT(ixO^S,mom(3))/wCT(ixO^S,rho_) * sin(x(ixO^S,2))
-    fcor(ixO^S,2)   = -wCT(ixO^S,mom(3))/wCT(ixO^S,rho_) * cos(x(ixO^S,2))
-    fcor(ixO^S,3)   = wCT(ixO^S,mom(1))/wCT(ixO^S,rho_) * sin(x(ixO^S,2)) &
-                      + wCT(ixO^S,mom(2))/wCT(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,1)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * sin(x(ixO^S,2))
+    fcor(ixO^S,2)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,3)   = w(ixO^S,mom(1))/w(ixO^S,rho_) * sin(x(ixO^S,2)) &
+                      + w(ixO^S,mom(2))/w(ixO^S,rho_) * cos(x(ixO^S,2))
     fcor(ixO^S,1:3) = 2.0d0*dOmegarot * fcor(ixO^S,1:3)
 
   end subroutine get_fict_forces
