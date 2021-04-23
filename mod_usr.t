@@ -95,6 +95,7 @@ module mod_usr
   real(8)           :: lstar, mstar, rstar, rhobound, twind, imag, alpha, Qbar
   real(8)           :: tstat, Wrot
   character(len=99) :: cakfile
+  logical           :: rotframe
 
   ! Additionally useful stellar and wind parameters:
   !   Eddington gamma, escape speed, CAK + fd mass-loss rate, terminal wind
@@ -107,7 +108,7 @@ module mod_usr
   ! Dimensionless variables of relevant variables above
   real(8) :: dlstar, dmstar, drstar, dbpole, drhobound, dtwind, dkappae
   real(8) :: dvesc, dvinf, dmdot, dasound, dclight, dGgrav, dgammae, detaconf
-  real(8) :: dtstat, dvrot
+  real(8) :: dtstat, dvrot, dOmegarot
 
   ! Additional names for wind and statistical variables
   integer :: my_gcak, my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav
@@ -173,7 +174,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, tstat, Wrot, cakfile
+                          Qbar, tstat, Wrot, cakfile, rotframe
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -263,7 +264,12 @@ contains
 
     ! No polar velocity, in azimuth rigid rotation for full grid (stabilizing)
     w(ixO^S,mom(2)) = 0.0d0
-    w(ixO^S,mom(3)) = dvrot/drstar * x(ixO^S,1) * sin(x(ixO^S,2))
+
+    if (rotframe) then
+      w(ixO^S,mom(3)) = 0.0d0
+    else
+      w(ixO^S,mom(3)) = dOmegarot * x(ixO^S,1) * sin(x(ixO^S,2))
+    endif
 
     ! Setup dipole magnetic field based on Tanaka splitting or regular
     if (B0field) then
@@ -324,7 +330,12 @@ contains
       w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
 
       w(ixB^S,mom(2)) = 0.0d0
-      w(ixB^S,mom(3)) = dvrot * sin(x(ixB^S,2))
+
+      if (rotframe) then
+        w(ixB^S,mom(3)) = 0.0d0
+      else
+        w(ixB^S,mom(3)) = dvrot * sin(x(ixB^S,2))
+      endif
 
       !=================
       ! Tanaka splitting
@@ -394,6 +405,7 @@ contains
     real(8) :: gcak(ixO^S), beta_fd(ixO^S), fdfac(ixO^S)
     real(8) :: fac, fac1, fac2
     integer :: jx^L, hx^L
+    real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
 
     ! Define time-centred, radial velocity from the radial momentum and density
     vr(ixI^S)  = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_)
@@ -462,6 +474,19 @@ contains
       w(ixO^S,e_) = w(ixO^S,e_) + qdt * gcak(ixO^S) * wCT(ixO^S,mom(1))
     endif
 
+    if (rotframe) then
+      call get_fict_forces(ixI^L,ixO^L,wCT,x,fcent,fcor)
+
+      ! Update conservative vars: w = w + qdt*gsource
+      w(ixO^S,mom(1)) = w(ixO^S,mom(1)) - qdt &
+                         * (fcent(ixO^S,1) + fcor(ixO^S,1)) * wCT(ixO^S,rho_)
+
+      w(ixO^S,mom(2)) = w(ixO^S,mom(2)) - qdt &
+                         * (fcent(ixO^S,2) + fcor(ixO^S,2)) * wCT(ixO^S,rho_)
+
+      w(ixO^S,mom(3)) = w(ixO^S,mom(3)) - qdt * fcor(ixO^S,3) * wCT(ixO^S,rho_)
+    endif
+
   end subroutine line_force
 
   !========================================================================
@@ -477,10 +502,30 @@ contains
     real(8), intent(inout) :: dtnew
 
     ! Local variables
-    real(8) :: tdum(ixO^S), dt_cak
+    real(8) :: tdum(ixO^S), tdum1(ixO^S), tdum2(ixO^S), dt_cak
+    real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
+
+
+    fcent(ixO^S,1)   = -sin(x(ixO^S,2))**2.0d0 * x(ixO^S,1)
+    fcent(ixO^S,2)   = -sin(x(ixO^S,2)) * cos(x(ixO^S,2)) * x(ixO^S,1)
+    fcent(ixO^S,3)   = 0.0d0
+    fcent(ixO^S,1:3) = dOmegarot**2.0d0 * fcent(ixO^S,1:3)
+
+    ! Coriolis force
+    fcor(ixO^S,1)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * sin(x(ixO^S,2))
+    fcor(ixO^S,2)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,3)   = w(ixO^S,mom(1))/w(ixO^S,rho_) * sin(x(ixO^S,2)) &
+                      + w(ixO^S,mom(2))/w(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,1:3) = 2.0d0*dOmegarot * fcor(ixO^S,1:3)
+
 
     ! Get dt from line force that is saved in the w-array in nwextra slot
-    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak)) )
+    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak) + (fcent(ixO^S,1) + fcor(ixO^S,1))) )
+    tdum1(ixO^S) = sqrt( block%dx(ixO^S,1) * block%dx(ixO^S,2) / abs((fcent(ixO^S,2) + fcor(ixO^S,2))) )
+    tdum2(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2)) * block%dx(ixO^S,3) / abs(fcor(ixO^S,3)) )
+
+    tdum(ixO^S) = tdum(ixO^S) + tdum1(ixO^S) + tdum2(ixO^S)
+
     dt_cak      = courantpar * minval(tdum(ixO^S))
 
     if (it >= 1) then
@@ -638,6 +683,31 @@ contains
 
   end subroutine make_dipoleboy
 
+  !===================================================================
+  ! Compute fictitious forces on spherical grid when in rotating frame
+  !===================================================================
+  subroutine get_fict_forces(ixI^L,ixO^L,wCT,x,fcent,fcor)
+
+    ! Subroutine arguments
+    integer, intent(in)  :: ixI^L, ixO^L
+    real(8), intent(in)  :: x(ixI^S,1:ndim), wCT(ixI^S,1:nw)
+    real(8), intent(out) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
+
+    ! Centrigufal force (radial=1, poloidal=2, toroidal=3)
+    fcent(ixO^S,1)   = -sin(x(ixO^S,2))**2.0d0 * x(ixO^S,1)
+    fcent(ixO^S,2)   = -sin(x(ixO^S,2)) * cos(x(ixO^S,2)) * x(ixO^S,1)
+    fcent(ixO^S,3)   = 0.0d0
+    fcent(ixO^S,1:3) = dOmegarot**2.0d0 * fcent(ixO^S,1:3)
+
+    ! Coriolis force
+    fcor(ixO^S,1)   = -wCT(ixO^S,mom(3))/wCT(ixO^S,rho_) * sin(x(ixO^S,2))
+    fcor(ixO^S,2)   = -wCT(ixO^S,mom(3))/wCT(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,3)   = wCT(ixO^S,mom(1))/wCT(ixO^S,rho_) * sin(x(ixO^S,2)) &
+                      + wCT(ixO^S,mom(2))/wCT(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,1:3) = 2.0d0*dOmegarot * fcor(ixO^S,1:3)
+
+  end subroutine get_fict_forces
+
   !=========================================================================
   ! Normalise relevant quantities to be used in the code + make log overview
   !=========================================================================
@@ -669,6 +739,7 @@ contains
     detaconf  = (dbpole/2.0d0)**2.0d0 * drstar**2.0d0/(dmdot * dvinf)
     dtstat    = tstat/unit_time
     dvrot     = vrot/unit_velocity
+    dOmegarot = dvrot/drstar
 
     if (mype == 0) then
       inputlog = trim(base_filename) // '_param_overview.log'

@@ -78,4 +78,5 @@
   Qbar     = 2000.0d0
   tstat    = 5.0d5
   Wrot     = 0.0d0
+  rotframe = .false.
 /
