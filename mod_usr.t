@@ -78,6 +78,9 @@
 !   > inclusion of rotating frame with fictitious forces + changed special_dt
 !   > analogous to HD physics, now rotating frame module implemented in MHD such
 !     that previous modifications unnecessary and mod_mhd_phys.t handles things
+!
+! (May 2021) -- Flo
+!   > modified vtheta boundary to avoid funny business at poles for etastar>100
 !===============================================================================
 
 module mod_usr
@@ -302,9 +305,10 @@ contains
 
   end subroutine initial_conditions
 
-  !=============================================================================
-  ! Special user boundary conditions at inner (+ possibly outer) radial boundary
-  !=============================================================================
+  !=================================================================
+  ! Special user boundary conditions at inner radial boundary:
+  !   vr, Btheta, Bphi (extrapolated); rho, vtheta, vphi, Br (fixed)
+  !=================================================================
   subroutine special_bound(qt,ixI^L,ixB^L,iB,w,x)
 
     ! Subroutine arguments
@@ -335,8 +339,6 @@ contains
       ! Prohibit radial velocity ghosts to be supersonic, and avoid overloading
       w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
       w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
-
-      w(ixB^S,mom(2)) = 0.0d0
 
       if (mhd_rotating_frame) then
         w(ixB^S,mom(3)) = 0.0d0
@@ -380,6 +382,28 @@ contains
           w(i^%1ixB^S,mag(3)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(3)) &
                                                + 4.0d0 * w(i+1^%1ixB^S,mag(3)))
         enddo
+      endif
+
+      ! Enforce poloidal flow along magnetic field; outside magnetosphere from
+      ! induction equation, inside magnetosphere put at zero
+      if (etastar > 1.0d0) then
+        if (B0field) then
+          where ( abs(0.5d0*dpi - x(ixB^S,2)) >= asin(sqrt(drstar/ralf)) )
+            w(ixB^S,mom(2)) = w(ixB^S,mom(1)) &
+                              * (block%B0(ixB^S,2,0) + w(ixB^S,mag(2))) &
+                              / (block%B0(ixB^S,1,0) + w(ixB^S,mag(1)))
+          elsewhere
+            w(ixB^S,mom(2)) = 0.0d0
+          endwhere
+        else
+          where ( abs(0.5d0*dpi - x(ixB^S,2)) >= asin(sqrt(drstar/ralf)) )
+            w(ixB^S,mom(2)) = w(ixB^S,mom(1)) * w(ixB^S,mag(2))/w(ixB^S,mag(1))
+          elsewhere
+            w(ixB^S,mom(2)) = 0.0d0
+          endwhere
+        endif
+      else
+        w(ixB^S,mom(2)) = 0.0d0
       endif
 
       ! Density is fixed, so per ideal gas law also the pressure
