@@ -803,6 +803,7 @@ contains
       write(94,*) 'adiabatic gamma = ', mhd_gamma
       write(94,*) 'alpha           = ', alpha
       write(94,*) 'Qbar            = ', Qbar
+      write(94,*) 'Qmax/Qbar       = ', Qmax/Qbar
       write(94,*) 'asound          = ', asound
       write(94,*) 'eff. vesc       = ', vesc
       write(94,*) 'vinf            = ', vinf
@@ -829,6 +830,7 @@ contains
       write(94,*) 'Mdot         = ', dmdot
       write(94,*) 'alpha        = ', alpha
       write(94,*) 'Qbar         = ', Qbar
+      write(94,*) 'Qmax         = ', Qmax/Qbar
       write(94,*) 'kappae       = ', dkappae
       write(94,*) 'asound       = ', dasound
       write(94,*) 'eff. vesc    = ', dvesc
