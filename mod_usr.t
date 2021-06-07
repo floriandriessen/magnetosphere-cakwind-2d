@@ -470,7 +470,7 @@ contains
 
     ! Total gradient with fallback requirement check
     dvdr(ixO^S) = dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S)
-    dvdr(ixO^S) = max(dvdr(ixO^S), 0.0d0)
+    dvdr(ixO^S) = max(dvdr(ixO^S), smalldouble)
 
     ! Finite disk factor parameterisation (Owocki & Puls 1996)
     beta_fd(ixO^S) = ( 1.0d0 - vr(ixO^S)/(x(ixO^S,1) * dvdr(ixO^S)) ) &
