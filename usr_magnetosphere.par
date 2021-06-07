@@ -82,6 +82,8 @@
   rhobound = 1.2d-11
   alpha    = 0.65d0
   Qbar     = 2000.0d0
+  Qmax     = 0.00395d0
   tstat    = 5.0d5
   Wrot     = 0.0d0
+  ifrc     = 1 
 /

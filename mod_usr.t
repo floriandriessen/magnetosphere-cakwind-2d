@@ -7,6 +7,9 @@
 !
 ! Coded up by Flo for his KU Leuven PhD thesis 2018-2022
 !-------------------------------------------------------------------------------
+! Options for wind to be specified in usr.par file:
+!   ifrc = 0  : finite disk corrected CAK wind
+!   ifrc = 1  : finite disk + opacity cut-off
 !
 ! (October 2019) -- Flo
 !   > setup of problem with 1D CAK wind starting from beta law in 2D geometry
@@ -81,6 +84,9 @@
 !
 ! (May 2021) -- Flo
 !   > modified vtheta boundary to avoid funny business at poles for etastar>100
+!
+! (June 2021) -- Flo
+!   > implemented cutoff force option and new parameter 'ifrc' to choose setups
 !===============================================================================
 
 module mod_usr
@@ -99,9 +105,10 @@ module mod_usr
 
   ! Extra input parameters:
   real(8)           :: lstar, mstar, rstar, rhobound, twind, imag, alpha, Qbar
-  real(8)           :: tstat, Wrot
+  real(8)           :: Qmax, tstat, Wrot
   character(len=99) :: cakfile
   logical           :: rotframe
+  integer           :: ifrc
 
   ! Additionally useful stellar and wind parameters:
   !   Eddington gamma, escape speed, CAK + fd mass-loss rate, terminal wind
@@ -180,7 +187,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, tstat, Wrot, cakfile, rotframe
+                          Qbar, tstat, Wrot, cakfile, rotframe, Qmax, ifrc
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -212,6 +219,7 @@ contains
     vrot   = vrotc * Wrot
 
     ! Wind quantities in CAK theory
+    Qmax   = Qmax * Qbar
     vesc   = sqrt(2.0d0 * Ggrav * mstar*(1.0d0 - gammae)/rstar)
     vinf   = vesc * sqrt(alpha/(1.0d0 - alpha))
     mdot   = lstar/const_c**2.0d0 * alpha/(1.0d0 - alpha) &
@@ -434,6 +442,7 @@ contains
     real(8) :: vr(ixI^S), rho(ixI^S)
     real(8) :: dvdr_up(ixO^S), dvdr_down(ixO^S), dvdr_cent(ixO^S), dvdr(ixO^S)
     real(8) :: gcak(ixO^S), beta_fd(ixO^S), fdfac(ixO^S)
+    real(8) :: taum(ixO^S), taumfac(ixO^S)
     real(8) :: fac, fac1, fac2
     integer :: jx^L, hx^L
     real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
@@ -492,7 +501,20 @@ contains
     fac  = fac1 * fac2
 
     gcak(ixO^S) = fac/x(ixO^S,1)**2.0d0 * (dvdr(ixO^S)/rho(ixO^S))**alpha
-    gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S)
+
+    ! Based on wind option do corrections
+    if (ifrc == 0) then
+      gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S)
+    elseif (ifrc == 1) then
+      taum(ixO^S) = dkappae * dclight * Qmax * rho(ixO^S)/dvdr(ixO^S)
+
+      taumfac(ixO^S) = ((1.0d0 + taum(ixO^S))**(1.0d0 - alpha) - 1.0d0) &
+                          / taum(ixO^S)**(1.0d0 - alpha)
+
+      gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S) * taumfac(ixO^S)
+    else
+      call mpistop('Error in wind option, take a valid ifrc=0,1')
+    endif
 
     ! Fill the CAK slot variable
     w(ixO^S,my_gcak) = gcak(ixO^S)
