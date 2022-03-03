@@ -1,20 +1,16 @@
 !===============================================================================
-! 2D wind module for launching a CAK line-driven wind from the stellar surface
-! into the magnetosphere of a magnetic massive star
+! 2D module for launching a CAK line-driven wind from the stellar surface into
+! the magnetosphere (dynamical or centrifugal) of a magnetic massive star
+! Setup inspired by the original work of ud-Doula & Owocki (2002)
 !
-! Setup mimicked as in ud-Doula & Owocki (2002).
+! Radiation force can be pure 1-D radial (iprob=0) or full 3-D (iprob=1)
 !
 ! Coded up by Flo for his KU Leuven PhD thesis 2018-2022
 !-------------------------------------------------------------------------------
 ! (October 2019) -- Flo
 !   > setup of problem with 1D CAK wind starting from beta law in 2D geometry
 !
-!   > implemented computation and storage auxiliary vars (Alfven speed + div B)
-!     using usr_aux_output
-!
 ! (May 2020) -- Flo
-!   > renaming of unit_mass/lum/ggrav in order to compile without conflict as
-!     AMRVAC v2.3 has a new particle module (with protected variable unit_mass)
 !   > implemented routine for computing time-averaged statistical variables
 !
 ! (June 2020) -- Flo
@@ -36,11 +32,14 @@
 !
 ! (April 2021) -- Flo
 !   > prohibit pure adiabatic cooling as it crashes, but is also unrealistic
-!   > inclusion of rotating frame with fictitious forces
+!   > inclusion of rotating frame with fictitious forces + update special_dt
 !
 ! (May 2021) -- Flo
 !   > modified vtheta boundary to avoid funny business at poles for etastar>100
-!!===============================================================================
+!
+! (March 2022) -- Flo
+!   > inclusion of 3-D line force; now selection between forces using "iprob"
+!===============================================================================
 
 module mod_usr
 
@@ -59,7 +58,7 @@ module mod_usr
   ! Extra input parameters:
   real(8)           :: lstar, mstar, rstar, rhobound, twind, imag, alpha, Qbar
   real(8)           :: Qmax, tstat, Wrot
-  integer           :: ifrc
+  integer           :: nthetap, nphip
   logical           :: rotframe
   character(len=99) :: cakfile
 
@@ -74,10 +73,14 @@ module mod_usr
 
   ! Additional names for wind and statistical variables
   integer :: my_gcak, my_rhoav, my_rho2av, my_vrav, my_vr2av, my_rhovrav
-  integer :: my_vpolav, my_vpol2av, my_tav
+  integer :: my_vpolav, my_vpol2av, my_tav, my_gcakr, my_gcakt, my_gcakp
 
   ! Arrays required to read and store 1D profile from file
   real(8), allocatable :: woneblock(:,:), xoneblock(:,:)
+
+  ! Ray parameters
+  real(8), allocatable :: ay(:), wy(:), aphi(:), wphi(:)
+  real(8) :: dphi
 
 contains
 
@@ -89,11 +92,8 @@ contains
     call set_coordinate_system("spherical_2.5D")
     call usr_params_read(par_files)
 
-    !
-    ! Choose independent normalization units, only 3 have to be specified:
-    !     (length,temp,ndens) or (length,vel,ndens)
-    ! Numberdensity chosen such that unit density becomes boundary density
-    !
+    ! Choose normalisation units: (length,temp,ndens) or (length,vel,ndens)
+    ! numberdensity chosen such that unit density becomes boundary density
     unit_length        = rstar                                      ! cm
     unit_temperature   = twind                                      ! K
     unit_numberdensity = rhobound/((1.d0+4.d0*He_abundance)*mp_cgs) ! g cm^-3
@@ -104,7 +104,7 @@ contains
     usr_init_one_grid    => initial_conditions
     usr_special_bc       => special_bound
     usr_gravity          => effective_gravity
-    usr_source           => line_force
+    usr_source           => special_source
     usr_get_dt           => special_dt
     usr_process_adv_grid => compute_stats
     usr_aux_output       => set_extravar_output
@@ -112,6 +112,9 @@ contains
     usr_set_B0           => make_dipoleboy
 
     my_gcak    = var_set_extravar("gcak", "gcak")
+    my_gcakr   = var_set_extravar("gcak_r", "gcak_r")
+    my_gcakt   = var_set_extravar("gcak_theta", "gcak_theta")
+    my_gcakp   = var_set_extravar("gcak_phi", "gcak_phi")
     my_rhoav   = var_set_extravar("rho_av", "rho_av")
     my_rho2av  = var_set_extravar("rho2_av", "rho2_av")
     my_vrav    = var_set_extravar("vrad_av", "vrad_av")
@@ -136,7 +139,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, tstat, Wrot, cakfile, Qmax, ifrc, rotframe
+                          Qbar, tstat, Wrot, cakfile, Qmax, rotframe, nphip, nthetap
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -189,6 +192,7 @@ contains
     resc = 2.0d0**(1.0d0/3.0d0) * rkep
 
     call make_dimless_and_log_vars()
+    call ray_init(nthetap,nphip)
 
     if (.not. resume_previous_run) call read_initial_oned_cak(cakfile)
 
@@ -369,10 +373,10 @@ contains
 
   end subroutine special_bound
 
-  !=======================================================================
-  ! Extra source using the analytical CAK line force in Gayley's formalism
-  !=======================================================================
-  subroutine line_force(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
+  !=======================================================
+  ! Special user source term to model radiation line force
+  !=======================================================
+  subroutine special_source(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
 
     ! Subroutine arguments
     integer, intent(in)    :: ixI^L, ixO^L, iw^LIM
@@ -381,92 +385,50 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variables
-    real(8) :: vr(ixI^S), rho(ixI^S)
-    real(8) :: dvdr_up(ixO^S), dvdr_down(ixO^S), dvdr_cent(ixO^S), dvdr(ixO^S)
-    real(8) :: gcak(ixO^S), beta_fd(ixO^S), fdfac(ixO^S)
-    real(8) :: taum(ixO^S), taumfac(ixO^S)
+    real(8) :: gcak(ixO^S,1:3), fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
     real(8) :: fac, fac1, fac2
-    integer :: jx^L, hx^L
-    real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
+    integer :: rdir, tdir, pdir
 
-    ! Define time-centred, radial velocity from the radial momentum and density
-    vr(ixI^S)  = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_)
-    rho(ixI^S) = wCT(ixI^S,rho_)
+    rdir = 1
+    tdir = 2
+    pdir = 3
 
-    ! Index +1 (j) and index -1 (h) in radial direction; kr(dir,dim)=1, dir=dim
-    jx^L=ixO^L+kr(1,^D);
-    hx^L=ixO^L-kr(1,^D);
+    ! Initialize forces
+    gcak(ixO^S,rdir) = 0.0d0
+    gcak(ixO^S,tdir) = 0.0d0
+    gcak(ixO^S,pdir) = 0.0d0
 
-    ! Get dv/dr on non-uniform grid according to Sundqvist & Veronis (1970)
-    ! Forward difference
-    dvdr_up(ixO^S) = (x(ixO^S,1) - x(hx^S,1)) * vr(jx^S) &
-                     / ((x(jx^S,1) - x(ixO^S,1)) * (x(jx^S,1) - x(hx^S,1)))
+    ! Get force in each point
+    select case (iprob)
+      case(0)
+        call line_force_radial(ixI^L,ixO^L,wCT,x,gcak)
+      case(1)
+        call line_force_3d(ixI^L,ixO^L,wCT,x,gcak)
+      case default
+        call mpistop("Select a valid iprob value!")
+    end select
 
-    ! Backward difference
-    dvdr_down(ixO^S) = -(x(jx^S,1) - x(ixO^S,1)) * vr(hx^S) &
-                        / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(hx^S,1)))
-
-    ! Central difference
-    dvdr_cent(ixO^S) = (x(jx^S,1) + x(hx^S,1) - 2.0d0*x(ixO^S,1)) * vr(ixO^S) &
-                       / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(ixO^S,1)))
-
-    ! Total gradient with fallback requirement check
-    dvdr(ixO^S) = dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S)
-    dvdr(ixO^S) = max(dvdr(ixO^S), smalldouble)
-
-    ! Finite disk factor parameterisation (Owocki & Puls 1996)
-    beta_fd(ixO^S) = ( 1.0d0 - vr(ixO^S)/(x(ixO^S,1) * dvdr(ixO^S)) ) &
-                      * (drstar/x(ixO^S,1))**2.0d0
-
-    ! Check the finite disk array and determine finite disk factor
-    where (beta_fd >= 1.0d0)
-      fdfac = 1.0d0/(1.0d0 + alpha)
-    elsewhere (beta_fd < -1.0d10)
-      fdfac = abs(beta_fd)**alpha / (1.0d0 + alpha)
-    elsewhere (abs(beta_fd) > 1.0d-3)
-      fdfac = (1.0d0 - (1.0d0 - beta_fd)**(1.0d0 + alpha)) &
-                  / (beta_fd*(1.0d0 + alpha))
-    elsewhere
-      fdfac = 1.0d0 - 0.5d0*alpha*beta_fd &
-                      * (1.0d0 + 1.0d0/3.0d0 * (1.0d0 - alpha)*beta_fd)
-    endwhere
-
-    where (fdfac < smalldouble)
-      fdfac = 0.0d0
-    elsewhere (fdfac > 5.0d0)
-      fdfac = 1.0d0
-    endwhere
-
-    ! Calculate CAK line-force and correct for finite extend stellar disk
+    ! Normalization force
     fac1 = 1.0d0/(1.0d0 - alpha) * dkappae * dlstar*Qbar/(4.0d0*dpi * dclight)
     fac2 = 1.0d0/(dclight * Qbar * dkappae)**alpha
     fac  = fac1 * fac2
 
-    gcak(ixO^S) = fac/x(ixO^S,1)**2.0d0 * (dvdr(ixO^S)/rho(ixO^S))**alpha
+    gcak(ixO^S,1:3) = gcak(ixO^S,1:3) * fac
 
-    ! Based on wind option do corrections
-    if (ifrc == 0) then
-      gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S)
-    elseif (ifrc == 1) then
-      taum(ixO^S) = dkappae * dclight * Qmax * rho(ixO^S)/dvdr(ixO^S)
-
-      taumfac(ixO^S) = ((1.0d0 + taum(ixO^S))**(1.0d0 - alpha) - 1.0d0) &
-                          / taum(ixO^S)**(1.0d0 - alpha)
-
-      gcak(ixO^S) = gcak(ixO^S) * fdfac(ixO^S) * taumfac(ixO^S)
-    else
-      call mpistop('Error in wind option, take a valid ifrc=0,1')
-    endif
-
-    ! Fill the CAK slot variable
-    w(ixO^S,my_gcak) = gcak(ixO^S)
+    ! Fill the nwextra slots for output
+    w(ixO^S,my_gcakr) = gcak(ixO^S,rdir)
+    w(ixO^S,my_gcakt) = gcak(ixO^S,tdir)
+    w(ixO^S,my_gcakp) = gcak(ixO^S,pdir)
+    w(ixO^S,my_gcak)  = gcak(ixO^S,rdir) + gcak(ixO^S,tdir) + gcak(ixO^S,pdir)
 
     ! Update conservative vars: w = w + qdt*gsource
-    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S) * wCT(ixO^S,rho_)
+    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S,rdir) * wCT(ixO^S,rho_)
+    w(ixO^S,mom(2)) = w(ixO^S,mom(2)) + qdt * gcak(ixO^S,tdir) * wCT(ixO^S,rho_)
+    w(ixO^S,mom(3)) = w(ixO^S,mom(3)) + qdt * gcak(ixO^S,pdir) * wCT(ixO^S,rho_)
 
     ! Update total energy e = e + vCT*rhoCT*qdt*gsource
     if (mhd_energy) then
-      w(ixO^S,e_) = w(ixO^S,e_) + qdt * gcak(ixO^S) * wCT(ixO^S,mom(1))
+      w(ixO^S,e_) = w(ixO^S,e_) + qdt * (gcak(ixO^S,rdir) + gcak(ixO^S,tdir) + gcak(ixO^S,pdir)) * wCT(ixO^S,mom(1))
     endif
 
     ! Update conservative vars if in rotating frame
@@ -482,8 +444,7 @@ contains
       w(ixO^S,mom(3)) = w(ixO^S,mom(3)) - qdt * fcor(ixO^S,3) * wCT(ixO^S,rho_)
     endif
 
-
-  end subroutine line_force
+  end subroutine special_source
 
   !========================================================================
   ! After first iteration the usr_source routine has been called, take now
@@ -498,8 +459,13 @@ contains
     real(8), intent(inout) :: dtnew
 
     ! Local variables
-    real(8) :: tdum(ixO^S), tdum1(ixO^S), tdum2(ixO^S), dt_cak
+    real(8) :: tdumr(ixO^S), tdumt(ixO^S), tdump(ixO^S), force(ixO^S)
+    real(8) :: dt_r, dt_t, dt_p
     real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
+
+    dt_r = bigdouble
+    dt_t = bigdouble
+    dt_p = bigdouble
 
     if (rotframe) then
       call get_fict_forces(ixI^L,ixO^L,w,x,fcent,fcor)
@@ -508,30 +474,34 @@ contains
       fcor(ixO^S,:)  = 0.0d0
     endif
 
-    ! Get dt from line force that is saved in the w-array in nwextra slot
-    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak) + (fcent(ixO^S,1) + fcor(ixO^S,1))) )
+    ! Get dt from force in each direction
+    ! === Radial ===
+    force(ixO^S) = w(ixO^S,my_gcakr) + (fcent(ixO^S,1) + fcor(ixO^S,1))
+    tdumr(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(force(ixO^S)) )
+    dt_r         = courantpar * minval(tdumr(ixO^S))
 
-    if (rotframe) then
-      tdum1(ixO^S) = sqrt( block%dx(ixO^S,1) * block%dx(ixO^S,2) / abs((fcent(ixO^S,2) + fcor(ixO^S,2))) )
-      tdum2(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2)) * block%dx(ixO^S,3) / abs(fcor(ixO^S,3)) )
-    else
-      tdum1(ixO^S) = 0.0d0
-      tdum2(ixO^S) = 0.0d0
-    endif
+    ! === Polar ===
+    force(ixO^S) = w(ixO^S,my_gcakt) + (fcent(ixO^S,2) + fcor(ixO^S,2))
+    tdumt(ixO^S) = sqrt( block%dx(ixO^S,1) * block%dx(ixO^S,2) / abs(force(ixO^S)) )
+    dt_t         = courantpar * minval(tdumt(ixO^S))
 
-    tdum(ixO^S) = tdum(ixO^S) + tdum1(ixO^S) + tdum2(ixO^S)
-    dt_cak      = courantpar * minval(tdum(ixO^S))
+    ! === Azimuthal ===
+    {^IFTHREED
+    force(ixO^S) = w(ixO^S,my_gcakp) + fcor(ixO^S,3)
+    tdump(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2) * block%dx(ixO^S,3)) / abs(force(ixO^S)) )
+    dt_p         = courantpar * minval(tdumt(ixO^S))
+    }
 
     if (it >= 1) then
-      dtnew = min(dtnew,dt_cak)
+      dtnew = min(dtnew,dt_r,dt_t,dt_p)
     endif
 
   end subroutine special_dt
 
-  !===================================================================
-  ! Combine stellar gravity and continuum electron scattering into an
-  ! effective gravity using Eddington's gamma
-  !===================================================================
+  !============================================================================
+  ! Combine stellar gravity and continuum electron scattering into an effective
+  ! gravity using Eddington's gamma
+  !============================================================================
   subroutine effective_gravity(ixI^L,ixO^L,wCT,x,gravity_field)
 
     ! Subroutine arguments
@@ -547,12 +517,12 @@ contains
 
   end subroutine effective_gravity
 
-  !==========================================================================
+  !=========================================================================
   ! Routine computes the time-averaged statistical quantity <X> via:
   !   <X>_i = <X>_i-1 + dt * X_i
   ! where <X> is the average of variable X and i','i-1' are the current and
   ! previous timestep respectively
-  !==========================================================================
+  !=========================================================================
   subroutine compute_stats(igrid,level,ixI^L,ixO^L,qt,w,x)
 
     ! Subroutine arguments
@@ -673,31 +643,6 @@ contains
     wB0(ixI^S,3) = 0.0d0
 
   end subroutine make_dipoleboy
-
-  !===================================================================
-  ! Compute fictitious forces on spherical grid when in rotating frame
-  !===================================================================
-  subroutine get_fict_forces(ixI^L,ixO^L,w,x,fcent,fcor)
-
-    ! Subroutine arguments
-    integer, intent(in)  :: ixI^L, ixO^L
-    real(8), intent(in)  :: x(ixI^S,1:ndim), w(ixI^S,1:nw)
-    real(8), intent(out) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
-
-    ! Centrigufal force (radial=1, poloidal=2, toroidal=3)
-    fcent(ixO^S,1)   = -sin(x(ixO^S,2))**2.0d0 * x(ixO^S,1)
-    fcent(ixO^S,2)   = -sin(x(ixO^S,2)) * cos(x(ixO^S,2)) * x(ixO^S,1)
-    fcent(ixO^S,3)   = 0.0d0
-    fcent(ixO^S,1:3) = dOmegarot**2.0d0 * fcent(ixO^S,1:3)
-
-    ! Coriolis force
-    fcor(ixO^S,1)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * sin(x(ixO^S,2))
-    fcor(ixO^S,2)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * cos(x(ixO^S,2))
-    fcor(ixO^S,3)   = w(ixO^S,mom(1))/w(ixO^S,rho_) * sin(x(ixO^S,2)) &
-                      + w(ixO^S,mom(2))/w(ixO^S,rho_) * cos(x(ixO^S,2))
-    fcor(ixO^S,1:3) = 2.0d0*dOmegarot * fcor(ixO^S,1:3)
-
-  end subroutine get_fict_forces
 
   !=========================================================================
   ! Normalise relevant quantities to be used in the code + make log overview
@@ -881,5 +826,412 @@ contains
     endif
 
   end subroutine read_initial_oned_cak
+
+  !====================================================
+  ! Analytical 3-D CAK line force in Gayley's formalism
+  !====================================================
+  subroutine line_force_3d(ixI^L,ixO^L,wCT,x,gcak)
+
+    ! Subroutine arguments
+    integer, intent(in)    :: ixI^L, ixO^L
+    real(8), intent(in)    :: wCT(ixI^S,1:nw), x(ixI^S,1:ndim)
+    real(8), intent(inout) :: gcak(ixO^S,1:3)
+
+    ! Local variables
+    real(8) :: vr(ixI^S), vt(ixI^S), vp(ixI^S), rho(ixI^S)
+    real(8) :: vrr(ixI^S), vtr(ixI^S), vpr(ixI^S)
+    real(8) :: dvrdr_up(ixO^S), dvrdr_down(ixO^S), dvrdr_cent(ixO^S), dvrdr(ixO^S)
+    real(8) :: dvtdr_up(ixO^S), dvtdr_down(ixO^S), dvtdr_cent(ixO^S), dvtdr(ixO^S)
+    real(8) :: dvpdr_up(ixO^S), dvpdr_down(ixO^S), dvpdr_cent(ixO^S), dvpdr(ixO^S)
+    real(8) :: dvrdt_up(ixO^S), dvrdt_down(ixO^S), dvrdt_cent(ixO^S), dvrdt(ixO^S)
+    real(8) :: dvtdt_up(ixO^S), dvtdt_down(ixO^S), dvtdt_cent(ixO^S), dvtdt(ixO^S)
+    real(8) :: dvpdt_up(ixO^S), dvpdt_down(ixO^S), dvpdt_cent(ixO^S), dvpdt(ixO^S)
+    real(8) :: dvrdp_up(ixO^S), dvrdp_down(ixO^S), dvrdp_cent(ixO^S), dvrdp(ixO^S)
+    real(8) :: dvtdp_up(ixO^S), dvtdp_down(ixO^S), dvtdp_cent(ixO^S), dvtdp(ixO^S)
+    real(8) :: dvpdp_up(ixO^S), dvpdp_down(ixO^S), dvpdp_cent(ixO^S), dvpdp(ixO^S)
+    real(8) :: a1, a2, a3, dvdn, wyray, y, wpray, phip, wtot, mustar
+    real(8) :: costp, costp2, sintp, cospp, sinpp, cott0
+    integer :: ix^D, jrx^L, hrx^L, jtx^L, htx^L, itp, ipp
+
+    ! Define time-centred velocity from the momentum and density
+    vr(ixI^S)  = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_)
+    vt(ixI^S)  = wCT(ixI^S,mom(2)) / wCT(ixI^S,rho_)
+    vp(ixI^S)  = wCT(ixI^S,mom(3)) / wCT(ixI^S,rho_)
+    rho(ixI^S) = wCT(ixI^S,rho_)
+    vrr(ixI^S) = vr(ixI^S) / x(ixI^S,1)
+    vtr(ixI^S) = vt(ixI^S) / x(ixI^S,1)
+    vpr(ixI^S) = vp(ixI^S) / x(ixI^S,1)
+
+    ! Index +1 (j) and index -1 (h) in radial direction; kr(dir,dim)=1, dir=dim
+    jrx^L=ixO^L+kr(1,^D);
+    hrx^L=ixO^L-kr(1,^D);
+
+    ! Index +1 (j) and index -1 (h) in theta direction
+    jtx^L=ixO^L+kr(2,^D);
+    htx^L=ixO^L-kr(2,^D);
+
+    ! Get dvn/dn on non-uniform grid according to Sundqvist & Veronis (1970)
+
+    ! === RADIAL DERIVATIVES ===
+    ! Forward, backward, central difference
+    dvrdr_up(ixO^S) = (x(ixO^S,1) - x(hrx^S,1)) * vr(jrx^S) &
+                     / ((x(jrx^S,1) - x(ixO^S,1)) * (x(jrx^S,1) - x(hrx^S,1)))
+
+    dvrdr_down(ixO^S) = -(x(jrx^S,1) - x(ixO^S,1)) * vr(hrx^S) &
+                       / ((x(ixO^S,1) - x(hrx^S,1)) * (x(jrx^S,1) - x(hrx^S,1)))
+
+    dvrdr_cent(ixO^S) = (x(jrx^S,1) + x(hrx^S,1) - 2.0d0*x(ixO^S,1)) * vr(ixO^S) &
+                      / ((x(ixO^S,1) - x(hrx^S,1)) * (x(jrx^S,1) - x(ixO^S,1)))
+
+    dvtdr_up(ixO^S) = (x(ixO^S,1) - x(hrx^S,1)) * vt(jrx^S) &
+                     / ((x(jrx^S,1) - x(ixO^S,1)) * (x(jrx^S,1) - x(hrx^S,1)))
+
+    dvtdr_down(ixO^S) = -(x(jrx^S,1) - x(ixO^S,1)) * vt(hrx^S) &
+                       / ((x(ixO^S,1) - x(hrx^S,1)) * (x(jrx^S,1) - x(hrx^S,1)))
+
+    dvtdr_cent(ixO^S) = (x(jrx^S,1) + x(hrx^S,1) - 2.0d0*x(ixO^S,1)) * vt(ixO^S) &
+                      / ((x(ixO^S,1) - x(hrx^S,1)) * (x(jrx^S,1) - x(ixO^S,1)))
+
+    dvpdr_up(ixO^S) = (x(ixO^S,1) - x(hrx^S,1)) * vp(jrx^S) &
+                    / ((x(jrx^S,1) - x(ixO^S,1)) * (x(jrx^S,1) - x(hrx^S,1)))
+
+    dvpdr_down(ixO^S) = -(x(jrx^S,1) - x(ixO^S,1)) * vp(hrx^S) &
+                        / ((x(ixO^S,1) - x(hrx^S,1)) * (x(jrx^S,1) - x(hrx^S,1)))
+
+    dvpdr_cent(ixO^S) = (x(jrx^S,1) + x(hrx^S,1) - 2.0d0*x(ixO^S,1)) * vp(ixO^S) &
+                       / ((x(ixO^S,1) - x(hrx^S,1)) * (x(jrx^S,1) - x(ixO^S,1)))
+
+    ! === POLAR DERIVATIVES ===
+    ! Forward, backward, central difference
+    dvrdt_up(ixO^S) = (x(ixO^S,2) - x(htx^S,2)) * vr(jtx^S) &
+                     / (x(ixO^S,1) * (x(jtx^S,2) - x(ixO^S,2)) * (x(jtx^S,2) - x(htx^S,2)))
+
+    dvrdt_down(ixO^S) = -(x(jtx^S,2) - x(ixO^S,2)) * vr(htx^S) &
+                       / ( x(ixO^S,1) * (x(ixO^S,2) - x(htx^S,2)) * (x(jtx^S,2) - x(htx^S,2)))
+
+    dvrdt_cent(ixO^S) = (x(jtx^S,2) + x(htx^S,2) - 2.0d0*x(ixO^S,2)) * vr(ixO^S) &
+                     / ( x(ixO^S,1) * (x(ixO^S,2) - x(htx^S,2)) * (x(jtx^S,2) - x(ixO^S,2)))
+
+    dvtdt_up(ixO^S) = (x(ixO^S,2) - x(htx^S,2)) * vt(jtx^S) &
+                     / (x(ixO^S,1) * (x(jtx^S,2) - x(ixO^S,2)) * (x(jtx^S,2) - x(htx^S,2)))
+
+    dvtdt_down(ixO^S) = -(x(jtx^S,2) - x(ixO^S,2)) * vt(htx^S) &
+                      / ( x(ixO^S,1) * (x(ixO^S,2) - x(htx^S,2)) * (x(jtx^S,2) - x(htx^S,2)))
+
+    dvtdt_cent(ixO^S) = (x(jtx^S,2) + x(htx^S,2) - 2.0d0*x(ixO^S,2)) * vt(ixO^S) &
+                      / ( x(ixO^S,1) * (x(ixO^S,2) - x(htx^S,2)) * (x(jtx^S,2) - x(ixO^S,2)))
+
+    dvpdt_up(ixO^S) = (x(ixO^S,2) - x(htx^S,2)) * vp(jtx^S) &
+                     / ((x(jtx^S,2) - x(ixO^S,2)) * (x(jtx^S,2) - x(htx^S,2)))
+
+    dvpdt_down(ixO^S) = -(x(jtx^S,2) - x(ixO^S,2)) * vp(htx^S) &
+                       / ((x(ixO^S,2) - x(htx^S,2)) * (x(jtx^S,2) - x(htx^S,2)))
+
+    dvpdt_cent(ixO^S) = (x(jtx^S,2) + x(htx^S,2) - 2.0d0*x(ixO^S,2)) * vp(ixO^S) &
+                     / ((x(ixO^S,2) - x(htx^S,2)) * (x(jtx^S,2) - x(ixO^S,2)))
+
+    ! === AZIMUTHAL DERIVATIVE ===
+    ! Forward, backward, central difference -- all zero in 2.5D
+    dvrdp_up(ixO^S)   = 0.0d0
+    dvrdp_down(ixO^S) = 0.0d0
+    dvrdp_cent(ixO^S) = 0.0d0
+    dvtdp_up(ixO^S)   = 0.0d0
+    dvtdp_down(ixO^S) = 0.0d0
+    dvtdp_cent(ixO^S) = 0.0d0
+    dvpdp_up(ixO^S)   = 0.0d0
+    dvpdp_down(ixO^S) = 0.0d0
+    dvpdp_cent(ixO^S) = 0.0d0
+
+    ! Total gradients in radial, polar, azimuthal direction
+    dvrdr(ixO^S) = dvrdr_down(ixO^S) + dvrdr_cent(ixO^S) + dvrdr_up(ixO^S)
+    dvtdr(ixO^S) = dvtdr_down(ixO^S) + dvtdr_cent(ixO^S) + dvtdr_up(ixO^S)
+    dvpdr(ixO^S) = dvpdr_down(ixO^S) + dvpdr_cent(ixO^S) + dvpdr_up(ixO^S)
+
+    dvrdt(ixO^S) = dvrdt_down(ixO^S) + dvrdt_cent(ixO^S) + dvrdt_up(ixO^S)
+    dvtdt(ixO^S) = dvtdt_down(ixO^S) + dvtdt_cent(ixO^S) + dvtdt_up(ixO^S)
+    dvpdt(ixO^S) = dvpdt_down(ixO^S) + dvpdt_cent(ixO^S) + dvpdt_up(ixO^S)
+
+    dvrdp(ixO^S) = dvrdp_down(ixO^S) + dvrdp_cent(ixO^S) + dvrdp_up(ixO^S)
+    dvtdp(ixO^S) = dvtdp_down(ixO^S) + dvtdp_cent(ixO^S) + dvtdp_up(ixO^S)
+    dvpdp(ixO^S) = dvpdp_down(ixO^S) + dvpdp_cent(ixO^S) + dvpdp_up(ixO^S)
+
+    ! Get total acceleration from all rays at a certain grid point
+    {do ix^DB=ixOmin^DB,ixOmax^DB\}
+      ! Loop over the rays; first theta then phi radiation angle
+      ! Get weights from current ray and their position
+      do itp = 1,nthetap
+        wyray  = wy(itp)
+        y      = ay(itp)
+
+        do ipp = 1,nphip
+          wpray = wphi(ipp)
+          phip  = aphi(ipp)
+
+          ! Redistribute the phi rays by a small offset
+          if (mod(itp,3) == 1) then
+            phip = phip + dphi/3.0d0
+          elseif (mod(itp,3) == 2) then
+            phip = phip - dphi/3.0d0
+          endif
+
+          ! === Geometrical factors ===
+          ! Make y quadrature linear in mu, not mu**2; better for gtheta,gphi
+          ! y -> mu quadrature is preserved; y=0 <=> mu=1; y=1 <=> mu=mustar
+          mustar = sqrt(max(1.0d0 - (drstar/x(ix^D,1))**2.0d0, 0.0d0))
+          costp  = 1.0d0 - y*(1.0d0 - mustar)
+          costp2 = costp*costp
+          sintp  = sqrt(max(1.0d0 - costp2, 0.0d0))
+          sinpp  = sin(phip)
+          cospp  = cos(phip)
+          cott0  = cos(x(ix^D,2))/sin(x(ix^D,2))
+
+          ! More weight close to star, less farther away
+          wtot  = wyray * wpray * (1.0d0 - mustar)
+
+          ! Convenients a la Cranmer & Owocki (1995)
+          a1 = costp
+          a2 = sintp * cospp
+          a3 = sintp * sinpp
+
+          ! Get total velocity gradient for one ray with given (theta', phi')
+          dvdn = a1*a1 * dvrdr(ix^D) + a2*a2 * (dvtdt(ix^D) + vrr(ix^D))  &
+                + a3*a3 * (dvpdp(ix^D) + cott0 * vtr(ix^D) + vrr(ix^D))   &
+                + a1*a2 * (dvtdr(ix^D) + dvrdt(ix^D) - vtr(ix^D))         &
+                + a1*a3 * (dvpdr(ix^D) + dvrdp(ix^D) - vpr(ix^D))         &
+                + a2*a3 * (dvpdt(ix^D) + dvtdp(ix^D) - cott0 * vpr(ix^D))
+
+          ! Fallback requirement check
+          dvdn = max(dvdn, smalldouble)
+
+          ! Convert gradient back from wind coordinates (r',theta',phi') to
+          ! stellar coordinates (r,theta,phi)
+          gcak(ix^D,1) = gcak(ix^D,1) + (dvdn/rho(ix^D))**alpha * a1 * wtot
+          gcak(ix^D,2) = gcak(ix^D,2) + (dvdn/rho(ix^D))**alpha * a2 * wtot
+          gcak(ix^D,3) = gcak(ix^D,3) + (dvdn/rho(ix^D))**alpha * a3 * wtot
+        enddo
+      enddo
+    {enddo\}
+
+    gcak(ixO^S,1:3) = gcak(ixO^S,1:3)/drstar**2.0d0
+
+  end subroutine line_force_3d
+
+  !==============================================================
+  ! Analytical purely radial CAK line force in Gayley's formalism
+  !==============================================================
+  subroutine line_force_radial(ixI^L,ixO^L,wCT,x,gcak)
+
+    ! Subroutine arguments
+    integer, intent(in)    :: ixI^L, ixO^L
+    real(8), intent(in)    :: wCT(ixI^S,1:nw), x(ixI^S,1:ndim)
+    real(8), intent(inout) :: gcak(ixO^S,1:3)
+
+    ! Local variables
+    real(8) :: vr(ixI^S), rho(ixI^S)
+    real(8) :: dvdr_up(ixO^S), dvdr_down(ixO^S), dvdr_cent(ixO^S), dvdr(ixO^S)
+    real(8) :: beta_fd(ixO^S), fdfac(ixO^S)
+    real(8) :: taum(ixO^S), taumfac(ixO^S)
+    integer :: jx^L, hx^L
+
+    ! Define time-centred, radial velocity from the radial momentum and density
+    vr(ixI^S)  = wCT(ixI^S,mom(1)) / wCT(ixI^S,rho_)
+    rho(ixI^S) = wCT(ixI^S,rho_)
+
+    ! Index +1 (j) and index -1 (h) in radial direction; kr(dir,dim)=1, dir=dim
+    jx^L=ixO^L+kr(1,^D);
+    hx^L=ixO^L-kr(1,^D);
+
+    ! Get dv/dr on non-uniform grid according to Sundqvist & Veronis (1970)
+    ! Forward difference
+    dvdr_up(ixO^S) = (x(ixO^S,1) - x(hx^S,1)) * vr(jx^S) &
+                     / ((x(jx^S,1) - x(ixO^S,1)) * (x(jx^S,1) - x(hx^S,1)))
+
+    ! Backward difference
+    dvdr_down(ixO^S) = -(x(jx^S,1) - x(ixO^S,1)) * vr(hx^S) &
+                        / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(hx^S,1)))
+
+    ! Central difference
+    dvdr_cent(ixO^S) = (x(jx^S,1) + x(hx^S,1) - 2.0d0*x(ixO^S,1)) * vr(ixO^S) &
+                       / ((x(ixO^S,1) - x(hx^S,1)) * (x(jx^S,1) - x(ixO^S,1)))
+
+    ! Total gradient with fallback requirement check
+    dvdr(ixO^S) = dvdr_down(ixO^S) + dvdr_cent(ixO^S) + dvdr_up(ixO^S)
+    dvdr(ixO^S) = max(dvdr(ixO^S), smalldouble)
+
+    ! Finite disk factor parameterisation (Owocki & Puls 1996)
+    beta_fd(ixO^S) = ( 1.0d0 - vr(ixO^S)/(x(ixO^S,1) * dvdr(ixO^S)) ) &
+                      * (drstar/x(ixO^S,1))**2.0d0
+
+    ! Check the finite disk array and determine finite disk factor
+    where (beta_fd >= 1.0d0)
+      fdfac = 1.0d0/(1.0d0 + alpha)
+    elsewhere (beta_fd < -1.0d10)
+      fdfac = abs(beta_fd)**alpha / (1.0d0 + alpha)
+    elsewhere (abs(beta_fd) > 1.0d-3)
+      fdfac = (1.0d0 - (1.0d0 - beta_fd)**(1.0d0 + alpha)) &
+                  / (beta_fd*(1.0d0 + alpha))
+    elsewhere
+      fdfac = 1.0d0 - 0.5d0*alpha*beta_fd &
+                      * (1.0d0 + 1.0d0/3.0d0 * (1.0d0 - alpha)*beta_fd)
+    endwhere
+
+    where (fdfac < smalldouble)
+      fdfac = 0.0d0
+    elsewhere (fdfac > 5.0d0)
+      fdfac = 1.0d0
+    endwhere
+
+    ! Only radial force in this case
+    gcak(ixO^S,1) = fdfac/x(ixO^S,1)**2.0d0 * (dvdr(ixO^S)/rho(ixO^S))**alpha
+
+    ! Correction for opacity cutoff
+    ! taum(ixO^S) = dkappae * dclight * Qmax * rho(ixO^S)/dvdr(ixO^S)
+    !
+    ! taumfac(ixO^S) = ((1.0d0 + taum(ixO^S))**(1.0d0 - alpha) - 1.0d0) &
+    !                     / taum(ixO^S)**(1.0d0 - alpha)
+    !
+    ! gcak(ixO^S) = gcak(ixO^S) * taumfac(ixO^S)
+
+  end subroutine line_force_radial
+
+  !=============================================================================
+  ! Initialize on each block (theta',phi') radiation angles coming from the star
+  !=============================================================================
+  subroutine ray_init(ntheta_point,nphi_point)
+
+    ! Subroutine arguments
+    integer, intent(in) :: ntheta_point, nphi_point
+
+    ! Local variables
+    real(8) :: ymin, ymax, phipmin, phipmax, dphi, adum
+    integer :: ii
+
+    ! Minimum and maximum range of theta and phi rays
+    ! NOTE: theta points are cast into y-space
+    ymin    = 0.0d0
+    ymax    = 1.0d0
+    phipmin = 0.0d0
+    phipmax = 2.0d0*dpi
+
+    ! Allocation for arrays on each block
+    allocate(ay(ntheta_point))
+    allocate(wy(ntheta_point))
+    allocate(aphi(nphi_point))
+    allocate(wphi(nphi_point))
+
+    ! theta ray positions and weights: Gauss-Legendre
+    call gauss_legendre_quadrature(ymin,ymax,ntheta_point,ay,wy)
+
+    ! theta rays and weights: uniform
+    ! dth = 1.0d0 / nthetap
+    ! adum = ymin + 0.5d0*dth
+    ! do ip = 1,nthetap
+    !   ay(ip) = adum
+    !   wy(ip) = 1.0d0/nthetap
+    !   adum = adum + dth
+    !   !print*,'phipoints'
+    !   !print*,ip,aphi(ip),wphi(ip),dphi
+    ! enddo
+
+    ! phi ray position and weights: uniform
+    dphi = (phipmax - phipmin) / nphi_point
+    adum = phipmin + 0.5d0*dphi
+    do ii = 1,nphi_point
+      aphi(ii) = adum
+      wphi(ii) = 1.0d0/nphi_point
+      adum     = adum + dphi
+    enddo
+
+    if (mype == 0) then
+      print*, '==========================='
+      print*, '    Radiation ray setup    '
+      print*, '==========================='
+      print*, 'Theta ray points + weights '
+      do ii = 1,ntheta_point
+        print*,ii,ay(ii),wy(ii)
+      enddo
+      print*
+      print*, 'Phi ray points + weights   '
+      do ii = 1,nphi_point
+        print*,ii,aphi(ii),wphi(ii)
+      enddo
+      print*
+    endif
+
+  end subroutine ray_init
+
+  !===========================================================================
+  ! Given the lower and upper limits of integration xlow and xhi, and given n,
+  ! this routine returns arrays x and w of length n, containing the abscissas
+  ! and weights of the Gauss-Legendre N-point quadrature formula.
+  ! Originated by G. Rybicki; adapted from Numerical Recipes F77, p. 145
+  !===========================================================================
+  subroutine gauss_legendre_quadrature(xlow,xhi,n,x,w)
+
+    ! Subroutine arguments
+    real(8), intent(in)  :: xlow, xhi
+    integer, intent(in)  :: n
+    real(8), intent(out) :: x(n), w(n)
+
+    ! Local variables
+    integer :: i, j, m
+    real(8) :: p1, p2, p3, pp, xl, xm, z, z1
+    real(8), parameter :: error=3.0d-14
+
+    m = (n + 1)/2
+    xm = 0.5d0*(xhi + xlow)
+    xl = 0.5d0*(xhi - xlow)
+
+    do i = 1,m
+      z = cos( dpi * (i - 0.25d0)/(n + 0.5d0) )
+      z1 = 2.0d0 * z
+
+      do while (abs(z1 - z) > error)
+        p1 = 1.0d0
+        p2 = 0.0d0
+
+        do j = 1,n
+          p3 = p2
+          p2 = p1
+          p1 = ( (2.0d0*j - 1.0d0)*z*p2 - (j - 1.0d0)*p3 )/j
+        enddo
+
+        pp = n*(z*p1 - p2) / (z*z - 1.0d0)
+        z1 = z
+        z = z1 - p1/pp
+      enddo
+
+      x(i)     = xm - xl*z
+      x(n+1-i) = xm + xl*z
+      w(i)     = 2.0d0*xl / ((1.0d0 - z*z) * pp*pp)
+      w(n+1-i) = w(i)
+    enddo
+
+  end subroutine gauss_legendre_quadrature
+
+  !===================================================================
+  ! Compute fictitious forces on spherical grid when in rotating frame
+  !===================================================================
+  subroutine get_fict_forces(ixI^L,ixO^L,w,x,fcent,fcor)
+
+    ! Subroutine arguments
+    integer, intent(in)  :: ixI^L, ixO^L
+    real(8), intent(in)  :: x(ixI^S,1:ndim), w(ixI^S,1:nw)
+    real(8), intent(out) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
+
+    ! Centrigufal force (radial=1, polar=2, azimuthal=3)
+    fcent(ixO^S,1)   = -sin(x(ixO^S,2))**2.0d0 * x(ixO^S,1)
+    fcent(ixO^S,2)   = -sin(x(ixO^S,2)) * cos(x(ixO^S,2)) * x(ixO^S,1)
+    fcent(ixO^S,3)   = 0.0d0
+    fcent(ixO^S,1:3) = dOmegarot**2.0d0 * fcent(ixO^S,1:3)
+
+    ! Coriolis force
+    fcor(ixO^S,1)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * sin(x(ixO^S,2))
+    fcor(ixO^S,2)   = -w(ixO^S,mom(3))/w(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,3)   = w(ixO^S,mom(1))/w(ixO^S,rho_) * sin(x(ixO^S,2)) &
+                      + w(ixO^S,mom(2))/w(ixO^S,rho_) * cos(x(ixO^S,2))
+    fcor(ixO^S,1:3) = 2.0d0*dOmegarot * fcor(ixO^S,1:3)
+
+  end subroutine get_fict_forces
 
 end module mod_usr
