@@ -2,42 +2,20 @@
 ! 2D wind module for launching a CAK line-driven wind from the stellar surface
 ! into the magnetosphere of a magnetic massive star
 !
-! Setup mimicked as in ud-Doula & Owocki (2002). Testbench, similar separate
-! program will be used for incorporating the LDI into the magnetosphere.
+! Setup mimicked as in ud-Doula & Owocki (2002).
 !
 ! Coded up by Flo for his KU Leuven PhD thesis 2018-2022
 !-------------------------------------------------------------------------------
-! Options for wind to be specified in usr.par file:
-!   ifrc = 0  : finite disk corrected CAK wind
-!   ifrc = 1  : finite disk + opacity cut-off
-!
 ! (October 2019) -- Flo
 !   > setup of problem with 1D CAK wind starting from beta law in 2D geometry
-!   > implementation special refinement routine near magnetic equatorial plane
 !
-! (November 2019) -- Flo
-!   > included AMRVAC 'iprob' mesh_list parameter to switch between setups
-!   > testing shows that Dedner divergence cleaners lead to negative pressures
-!     near the pole, build a MPI stop to prevent using this cleaner family
 !   > implemented computation and storage auxiliary vars (Alfven speed + div B)
 !     using usr_aux_output
-!
-! (December 2019) -- Flo
-!   > extension code to allow for new Constrained Transport method for B-field
-!     (needs 2.5D for vector potential, but phi components of vectors are zero)
-!     (can actually allow for rotation now in 2D)
-!   > typedivbfix together with iprob=0 in .par file now determines whether
-!     CAK simulation will be staggered (for CT) or not (for non-CT)
-!     does not matter for CAK, but it is saved in AMRVAC restart configs and
-!     required for restart with magnetosphere
 !
 ! (May 2020) -- Flo
 !   > renaming of unit_mass/lum/ggrav in order to compile without conflict as
 !     AMRVAC v2.3 has a new particle module (with protected variable unit_mass)
-!   > removed finite disk factor from output (only useful for testing)
 !   > implemented routine for computing time-averaged statistical variables
-!   > for post-simulation convenience at startup a log file gets created that
-!     contains an overview of all relevant parameters
 !
 ! (June 2020) -- Flo
 !   > implementation to do Bfield splitting via Tanaka method by calling the
@@ -46,48 +24,23 @@
 !             'Bdip' in .par file, however, this formula leads to an eta_star
 !             4x bigger (AMRVAC has different way of expressing dipole)
 !   > change to better velocity gradient stencil to deal with non-uniform grids
-!   > removed Constrained Transport implementation, extensive testing has shown
-!     that unphysical results and are unreliable (for this application here)
 !
 ! (October 2020) -- Flo
 !   > added rigid body rotation to study centrifugal magnetospheres, set in
 !     .par file with dimensionless 'Wrot' parameter (ud-Doula et al. 2006)
-!   > included option with parameter 'imag' to select setup in terms of field
-!     strength (imag>0) or wind confinement (imag<0)
-!
-! (December 2020) -- Flo
-!   > removed rho2vrad_av and rho2vpol_av variables from statistics
-!
-! (January 2021) -- Flo
-!   > do not start from relaxed CAK model anymore, instead start directly from
-!     beta law with Bfield (c.q. Oct 2019); adds more flexibility in multi-d
-!   > removed accordingly the 'iprob' option
+!   > 'imag' to select field strength (imag>0) or wind confinement (imag<0)
 !
 ! (February 2021) -- Flo
-!   > starting from beta law in high confinement leads to crash, removed mods
-!     from January; instead now 1D relaxed CAK read in
 !   > put effective gravity force in usr_gravity and removed from usr_source
-!   > determination radiation timestep (only CAK line force now) in special_dt
-!     by using gcak slot of nwextra in w-array
-!   > rewriting statistics to get rid off tmp variables, AMRVAC keeps in memory
-!     the w-array from previous iteration, and now called in my computation
-!   > call statistics at end iteration (usr_process_adv_grid) instead of at
-!     start iteration to have access to the old state 'pso'
+!   > compute radiation timestep in special_dt by using gcak slot in w-array
 !
 ! (April 2021) -- Flo
-!   > no more pso-state in statistics, now only current since averaging is each
-!     iteration such that weight with previous iteration unnecessary
 !   > prohibit pure adiabatic cooling as it crashes, but is also unrealistic
-!   > inclusion of rotating frame with fictitious forces + changed special_dt
-!   > analogous to HD physics, now rotating frame module implemented in MHD such
-!     that previous modifications unnecessary and mod_mhd_phys.t handles things
+!   > inclusion of rotating frame with fictitious forces
 !
 ! (May 2021) -- Flo
 !   > modified vtheta boundary to avoid funny business at poles for etastar>100
-!
-! (June 2021) -- Flo
-!   > implemented cutoff force option and new parameter 'ifrc' to choose setups
-!===============================================================================
+!!===============================================================================
 
 module mod_usr
 
@@ -106,15 +59,11 @@ module mod_usr
   ! Extra input parameters:
   real(8)           :: lstar, mstar, rstar, rhobound, twind, imag, alpha, Qbar
   real(8)           :: Qmax, tstat, Wrot
-  character(len=99) :: cakfile
-  logical           :: rotframe
   integer           :: ifrc
+  logical           :: rotframe
+  character(len=99) :: cakfile
 
   ! Additionally useful stellar and wind parameters:
-  !   Eddington gamma, escape speed, CAK + fd mass-loss rate, terminal wind
-  !   speed, sound speed, log(g), eff. log(g), scale height, mean mol. weight,
-  !   polar magnetic field, wind magnetic confinement parameter, Alfven +
-  !   Kepler + escape radius, equatorial rotation + critical rotation speed
   real(8) :: gammae, vesc, mdot, mdotfd, vinf, asound, logg, logge, heff
   real(8) :: mumol, bpole, etastar, ralf, rkep, resc, vrot, vrotc
 
@@ -187,7 +136,7 @@ contains
     integer :: n
 
     namelist /star_list/ mstar, lstar, rstar, twind, imag, rhobound, alpha, &
-                          Qbar, tstat, Wrot, cakfile, rotframe, Qmax, ifrc
+                          Qbar, tstat, Wrot, cakfile, Qmax, ifrc, rotframe
 
     do n = 1,size(files)
        open(unitpar, file=trim(files(n)), status="old")
@@ -206,7 +155,6 @@ contains
   ! Compute some quantities of interest (in CGS) before making unitless
   !====================================================================
   subroutine initglobaldata_usr
-    use mod_rotating_frame
 
     ! Stellar structure
     gammae = kappae * lstar/(4.d0*dpi * Ggrav * mstar * const_c)
@@ -243,8 +191,6 @@ contains
     call make_dimless_and_log_vars()
 
     if (.not. resume_previous_run) call read_initial_oned_cak(cakfile)
-
-    if (mhd_rotating_frame) omega_frame = dOmegarot
 
     if (typedivbfix == 'ct') then
       call mpistop('CT disabled. Gives strange results for this problem.')
@@ -283,7 +229,7 @@ contains
     w(ixO^S,mom(2)) = 0.0d0
 
     ! In azimuth no velocity (rotating frame) or rigid rotation for full grid
-    if (mhd_rotating_frame) then
+    if (rotframe) then
       w(ixO^S,mom(3)) = 0.0d0
     else
       w(ixO^S,mom(3)) = dOmegarot * x(ixO^S,1) * sin(x(ixO^S,2))
@@ -348,15 +294,13 @@ contains
       w(ixB^S,mom(1)) = min(w(ixB^S,mom(1)), dasound)
       w(ixB^S,mom(1)) = max(w(ixB^S,mom(1)), -dasound)
 
-      if (mhd_rotating_frame) then
+      if (rotframe) then
         w(ixB^S,mom(3)) = 0.0d0
       else
         w(ixB^S,mom(3)) = dvrot * sin(x(ixB^S,2))
       endif
 
-      !=================
-      ! Tanaka splitting
-      !=================
+      ! === Tanaka splitting ===
       if (B0field) then
         do i = ixBmax1,ixBmin1,-1
           ! r*r*(B0r + delta Br) = constant
@@ -373,9 +317,7 @@ contains
           w(i^%1ixB^S,mag(3)) = 1.0d0/3.0d0 * (- w(i+2^%1ixB^S,mag(3)) &
                                                + 4.0d0 * w(i+1^%1ixB^S,mag(3)))
         enddo
-      !========
-      ! Regular
-      !========
+      ! === Regular ===
       else
         do i = ixBmax1,ixBmin1,-1
           ! r*r*Br = constant
@@ -527,6 +469,20 @@ contains
       w(ixO^S,e_) = w(ixO^S,e_) + qdt * gcak(ixO^S) * wCT(ixO^S,mom(1))
     endif
 
+    ! Update conservative vars if in rotating frame
+    if (rotframe) then
+      call get_fict_forces(ixI^L,ixO^L,wCT,x,fcent,fcor)
+
+      w(ixO^S,mom(1)) = w(ixO^S,mom(1)) - qdt &
+                         * (fcent(ixO^S,1) + fcor(ixO^S,1)) * wCT(ixO^S,rho_)
+
+      w(ixO^S,mom(2)) = w(ixO^S,mom(2)) - qdt &
+                         * (fcent(ixO^S,2) + fcor(ixO^S,2)) * wCT(ixO^S,rho_)
+
+      w(ixO^S,mom(3)) = w(ixO^S,mom(3)) - qdt * fcor(ixO^S,3) * wCT(ixO^S,rho_)
+    endif
+
+
   end subroutine line_force
 
   !========================================================================
@@ -542,10 +498,28 @@ contains
     real(8), intent(inout) :: dtnew
 
     ! Local variables
-    real(8) :: tdum(ixO^S), dt_cak
+    real(8) :: tdum(ixO^S), tdum1(ixO^S), tdum2(ixO^S), dt_cak
+    real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
+
+    if (rotframe) then
+      call get_fict_forces(ixI^L,ixO^L,w,x,fcent,fcor)
+    else
+      fcent(ixO^S,:) = 0.0d0
+      fcor(ixO^S,:)  = 0.0d0
+    endif
 
     ! Get dt from line force that is saved in the w-array in nwextra slot
-    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak)) )
+    tdum(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(w(ixO^S,my_gcak) + (fcent(ixO^S,1) + fcor(ixO^S,1))) )
+
+    if (rotframe) then
+      tdum1(ixO^S) = sqrt( block%dx(ixO^S,1) * block%dx(ixO^S,2) / abs((fcent(ixO^S,2) + fcor(ixO^S,2))) )
+      tdum2(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2)) * block%dx(ixO^S,3) / abs(fcor(ixO^S,3)) )
+    else
+      tdum1(ixO^S) = 0.0d0
+      tdum2(ixO^S) = 0.0d0
+    endif
+
+    tdum(ixO^S) = tdum(ixO^S) + tdum1(ixO^S) + tdum2(ixO^S)
     dt_cak      = courantpar * minval(tdum(ixO^S))
 
     if (it >= 1) then
