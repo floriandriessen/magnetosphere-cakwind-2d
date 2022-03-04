@@ -373,9 +373,10 @@ contains
 
   end subroutine special_bound
 
-  !=======================================================
-  ! Special user source term to model radiation line force
-  !=======================================================
+  !==========================================================================
+  ! Special user source term to model radiation line force and possibly added
+  ! fictitious forces when rotating frame is activated
+  !==========================================================================
   subroutine special_source(qdt,ixI^L,ixO^L,iw^LIM,qtC,wCT,qt,w,x)
 
     ! Subroutine arguments
@@ -459,13 +460,11 @@ contains
     real(8), intent(inout) :: dtnew
 
     ! Local variables
-    real(8) :: tdumr(ixO^S), tdumt(ixO^S), tdump(ixO^S), force(ixO^S)
-    real(8) :: dt_r, dt_t, dt_p
+    real(8) :: tdumr(ixO^S), tdumt(ixO^S), force(ixO^S), dt_r, dt_t
     real(8) :: fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
 
     dt_r = bigdouble
     dt_t = bigdouble
-    dt_p = bigdouble
 
     if (rotframe) then
       call get_fict_forces(ixI^L,ixO^L,w,x,fcent,fcor)
@@ -474,7 +473,7 @@ contains
       fcor(ixO^S,:)  = 0.0d0
     endif
 
-    ! Get dt from force in each direction
+    ! Get dt from force in each direction -- no phi-waves in 2.5D
     ! === Radial ===
     force(ixO^S) = w(ixO^S,my_gcakr) + (fcent(ixO^S,1) + fcor(ixO^S,1))
     tdumr(ixO^S) = sqrt( block%dx(ixO^S,1) / abs(force(ixO^S)) )
@@ -485,15 +484,8 @@ contains
     tdumt(ixO^S) = sqrt( block%dx(ixO^S,1) * block%dx(ixO^S,2) / abs(force(ixO^S)) )
     dt_t         = courantpar * minval(tdumt(ixO^S))
 
-    ! === Azimuthal ===
-    {^IFTHREED
-    force(ixO^S) = w(ixO^S,my_gcakp) + fcor(ixO^S,3)
-    tdump(ixO^S) = sqrt( block%dx(ixO^S,1) * sin(block%dx(ixO^S,2) * block%dx(ixO^S,3)) / abs(force(ixO^S)) )
-    dt_p         = courantpar * minval(tdumt(ixO^S))
-    }
-
     if (it >= 1) then
-      dtnew = min(dtnew,dt_r,dt_t,dt_p)
+      dtnew = min(dtnew,dt_r,dt_t)
     endif
 
   end subroutine special_dt
@@ -649,9 +641,8 @@ contains
   !=========================================================================
   subroutine make_dimless_and_log_vars()
 
-    ! Local variables
+    ! Local variable
     character(len=8)  :: todayis
-    character(len=99) :: inputlog
 
     ! From the AMRVAC unit vars compute some extra relevant for us
     my_unit_ggrav = unit_density * unit_time**2.0d0
@@ -678,88 +669,82 @@ contains
     dOmegarot = dvrot/drstar
 
     if (mype == 0) then
-      inputlog = trim(base_filename) // '_param_overview.log'
-      open(unit=94,file=inputlog)
 
       call date_and_time(todayis)
-      write(94,*) 'MPI-AMRVAC simulation ran on ', &
+      write(*,*) 'MPI-AMRVAC simulation ran on ', &
                     todayis(7:8), '/', todayis(5:6), '/', todayis(1:4)
-      write(94,*)
-      write(94,*) '======================'
-      write(94,*) '   Unity quantities   '
-      write(94,*) '======================'
-      write(94,*) 'unit length        = ', unit_length
-      write(94,*) 'unit density       = ', unit_density
-      write(94,*) 'unit velocity      = ', unit_velocity
-      write(94,*) 'unit numberdensity = ', unit_numberdensity
-      write(94,*) 'unit pressure      = ', unit_pressure
-      write(94,*) 'unit temperature   = ', unit_temperature
-      write(94,*) 'unit magneticfield = ', unit_magneticfield
-      write(94,*) 'unit time          = ', unit_time
-      write(94,*)
-      write(94,*) '==============================================='
-      write(94,*) '   Stellar and wind parameters in CGS units    '
-      write(94,*) '==============================================='
-      write(94,*) 'Lstar/Lsun             = ', lstar/lsun
-      write(94,*) 'Mstar/Msun             = ', mstar/msun
-      write(94,*) 'Rstar/Rsun             = ', rstar/rsun
-      write(94,*) 'Twind                  = ', twind
-      write(94,*) 'Polar magnetic field   = ', bpole
-      write(94,*) 'Wind confinement eta   = ', etastar
-      write(94,*) 'Ralf/Rstar             = ', ralf
-      write(94,*) 'Rkep/Rstar             = ', rkep
-      write(94,*) 'Resc/Rstar             = ', resc
-      write(94,*) 'W (vrot/vrotc)         = ', Wrot
-      write(94,*) 'critical vrot          = ', vrotc
-      write(94,*) 'vrot                   = ', vrot
-      write(94,*) 'Mean molecular weight  = ', mumol
-      write(94,*) 'log(g)                 = ', logg
-      write(94,*) 'eff. log(g)            = ', logge
-      write(94,*) 'eff. scale height heff = ', heff
-      write(94,*) 'heff/Rstar             = ', heff/rstar
-      write(94,*) 'Eddington gamma        = ', gammae
-      write(94,*)
-      write(94,*) 'adiabatic gamma = ', mhd_gamma
-      write(94,*) 'alpha           = ', alpha
-      write(94,*) 'Qbar            = ', Qbar
-      write(94,*) 'Qmax/Qbar       = ', Qmax/Qbar
-      write(94,*) 'asound          = ', asound
-      write(94,*) 'eff. vesc       = ', vesc
-      write(94,*) 'vinf            = ', vinf
-      write(94,*)
-      write(94,*) 'surface density        = ', rhobound
-      write(94,*) 'analytic Mdot CAK      = ', mdot * (const_years/msun)
-      write(94,*) '... with FD correction = ', mdotfd * (const_years/msun)
-      write(94,*)
-      write(94,*) '========================================'
-      write(94,*) '    Dimensionless AMRVAC quantities     '
-      write(94,*) '========================================'
-      write(94,*) 'Extra computed unit quantities:'
-      write(94,*) '   unit Lum  = ', my_unit_lum
-      write(94,*) '   unit Mass = ', my_unit_mass
-      write(94,*) '   unit Grav = ', my_unit_ggrav
-      write(94,*) 'Lstar        = ', dlstar
-      write(94,*) 'Mstar        = ', dmstar
-      write(94,*) 'Rstar        = ', drstar
-      write(94,*) 'Twind        = ', dtwind
-      write(94,*) 'Bpole        = ', dbpole
-      write(94,*) 'Eta conf.    = ', detaconf
-      write(94,*) 'Edd. gamma   = ', dgammae
-      write(94,*) 'rhobound     = ', drhobound
-      write(94,*) 'Mdot         = ', dmdot
-      write(94,*) 'alpha        = ', alpha
-      write(94,*) 'Qbar         = ', Qbar
-      write(94,*) 'Qmax         = ', Qmax/Qbar
-      write(94,*) 'kappae       = ', dkappae
-      write(94,*) 'asound       = ', dasound
-      write(94,*) 'eff. vesc    = ', dvesc
-      write(94,*) 'vinf         = ', dvinf
-      write(94,*) 'vrot         = ', dvrot
-      write(94,*) 'clight       = ', dclight
-      write(94,*) 'Ggrav        = ', dGgrav
-      write(94,*) 'Tstat        = ', dtstat
-      write(94,*)
-      close(94)
+      write(*,*)
+      write(*,*) '======================'
+      write(*,*) '   Unity quantities   '
+      write(*,*) '======================'
+      write(*,*) 'unit length        = ', unit_length
+      write(*,*) 'unit density       = ', unit_density
+      write(*,*) 'unit velocity      = ', unit_velocity
+      write(*,*) 'unit numberdensity = ', unit_numberdensity
+      write(*,*) 'unit pressure      = ', unit_pressure
+      write(*,*) 'unit temperature   = ', unit_temperature
+      write(*,*) 'unit magneticfield = ', unit_magneticfield
+      write(*,*) 'unit time          = ', unit_time
+      write(*,*)
+      write(*,*) '==============================================='
+      write(*,*) '   Stellar and wind parameters in CGS units    '
+      write(*,*) '==============================================='
+      write(*,*) 'Lstar/Lsun             = ', lstar/lsun
+      write(*,*) 'Mstar/Msun             = ', mstar/msun
+      write(*,*) 'Rstar/Rsun             = ', rstar/rsun
+      write(*,*) 'Twind                  = ', twind
+      write(*,*) 'Polar magnetic field   = ', bpole
+      write(*,*) 'Wind confinement eta   = ', etastar
+      write(*,*) 'Ralf/Rstar             = ', ralf
+      write(*,*) 'Rkep/Rstar             = ', rkep
+      write(*,*) 'Resc/Rstar             = ', resc
+      write(*,*) 'Mean molecular weight  = ', mumol
+      write(*,*) 'log(g)                 = ', logg
+      write(*,*) 'eff. log(g)            = ', logge
+      write(*,*) 'eff. scale height heff = ', heff
+      write(*,*) 'heff/Rstar             = ', heff/rstar
+      write(*,*) 'W (vrot/vrotc)         = ', Wrot
+      write(*,*) 'critical vrot          = ', vrotc
+      write(*,*) 'vrot                   = ', vrot
+      write(*,*)
+      write(*,*) 'adiabatic gamma = ', mhd_gamma
+      write(*,*) 'Eddington gamma = ', gammae
+      write(*,*) 'alpha           = ', alpha
+      write(*,*) 'Qbar            = ', Qbar
+      write(*,*) 'Qmax/Qbar       = ', Qmax/Qbar
+      write(*,*) 'asound          = ', asound
+      write(*,*) 'eff. vesc       = ', vesc
+      write(*,*) 'CAK vinf        = ', vinf
+      write(*,*) 'FD vinf         = ', 3.0d0 * vesc
+      write(*,*)
+      write(*,*) 'surface density        = ', rhobound
+      write(*,*) 'analytic Mdot CAK      = ', mdot * (const_years/msun)
+      write(*,*) '... with FD correction = ', mdot/(1.0d0 + alpha)**(1.0d0/alpha) * (const_years/msun)
+      write(*,*)
+      write(*,*) '========================================'
+      write(*,*) '    Dimensionless AMRVAC quantities     '
+      write(*,*) '========================================'
+      write(*,*) 'Extra computed unit quantities:'
+      write(*,*) '   unit Lum  = ', my_unit_lum
+      write(*,*) '   unit Mass = ', my_unit_mass
+      write(*,*) '   unit Grav = ', my_unit_ggrav
+      write(*,*) 'Lstar        = ', dlstar
+      write(*,*) 'Mstar        = ', dmstar
+      write(*,*) 'Rstar        = ', drstar
+      write(*,*) 'Twind        = ', dtwind
+      write(*,*) 'Bpole        = ', dbpole
+      write(*,*) 'Eta conf.    = ', detaconf
+      write(*,*) 'rhobound     = ', drhobound
+      write(*,*) 'Mdot         = ', dmdot
+      write(*,*) 'kappae       = ', dkappae
+      write(*,*) 'asound       = ', dasound
+      write(*,*) 'eff. vesc    = ', dvesc
+      write(*,*) 'vinf (CAK)   = ', dvinf
+      write(*,*) 'vrot         = ', dvrot
+      write(*,*) 'clight       = ', dclight
+      write(*,*) 'Ggrav        = ', dGgrav
+      write(*,*) 'Tstat        = ', dtstat
+      write(*,*)
     endif
 
   end subroutine make_dimless_and_log_vars
@@ -1143,19 +1128,19 @@ contains
     enddo
 
     if (mype == 0) then
-      print*, '==========================='
-      print*, '    Radiation ray setup    '
-      print*, '==========================='
-      print*, 'Theta ray points + weights '
+      write(*,*) '==========================='
+      write(*,*) '    Radiation ray setup    '
+      write(*,*) '==========================='
+      write(*,*) 'Theta ray points + weights '
       do ii = 1,ntheta_point
-        print*,ii,ay(ii),wy(ii)
+        write(*,*) ii,ay(ii),wy(ii)
       enddo
-      print*
-      print*, 'Phi ray points + weights   '
+      write(*,*)
+      write(*,*) 'Phi ray points + weights   '
       do ii = 1,nphi_point
-        print*,ii,aphi(ii),wphi(ii)
+        write(*,*) ii,aphi(ii),wphi(ii)
       enddo
-      print*
+      write(*,*)
     endif
 
   end subroutine ray_init
