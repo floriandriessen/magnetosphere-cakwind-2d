@@ -192,7 +192,7 @@ contains
     resc = 2.0d0**(1.0d0/3.0d0) * rkep
 
     call make_dimless_and_log_vars()
-    call ray_init(nthetap,nphip)
+    if (iprob == 1) call ray_init(nthetap,nphip)
 
     if (.not. resume_previous_run) call read_initial_oned_cak(cakfile)
 
@@ -388,16 +388,11 @@ contains
     ! Local variables
     real(8) :: gcak(ixO^S,1:3), fcent(ixO^S,1:ndir), fcor(ixO^S,1:ndir)
     real(8) :: fac, fac1, fac2
-    integer :: rdir, tdir, pdir
 
-    rdir = 1
-    tdir = 2
-    pdir = 3
-
-    ! Initialize forces
-    gcak(ixO^S,rdir) = 0.0d0
-    gcak(ixO^S,tdir) = 0.0d0
-    gcak(ixO^S,pdir) = 0.0d0
+    ! Initialize forces (radial=1, polar=2, azimuthal=3)
+    gcak(ixO^S,1) = 0.0d0
+    gcak(ixO^S,2) = 0.0d0
+    gcak(ixO^S,3) = 0.0d0
 
     ! Get force in each point
     select case (iprob)
@@ -417,19 +412,21 @@ contains
     gcak(ixO^S,1:3) = gcak(ixO^S,1:3) * fac
 
     ! Fill the nwextra slots for output
-    w(ixO^S,my_gcakr) = gcak(ixO^S,rdir)
-    w(ixO^S,my_gcakt) = gcak(ixO^S,tdir)
-    w(ixO^S,my_gcakp) = gcak(ixO^S,pdir)
-    w(ixO^S,my_gcak)  = gcak(ixO^S,rdir) + gcak(ixO^S,tdir) + gcak(ixO^S,pdir)
+    w(ixO^S,my_gcakr) = gcak(ixO^S,1)
+    w(ixO^S,my_gcakt) = gcak(ixO^S,2)
+    w(ixO^S,my_gcakp) = gcak(ixO^S,3)
+    w(ixO^S,my_gcak)  = gcak(ixO^S,1) + gcak(ixO^S,2) + gcak(ixO^S,3)
 
     ! Update conservative vars: w = w + qdt*gsource
-    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S,rdir) * wCT(ixO^S,rho_)
-    w(ixO^S,mom(2)) = w(ixO^S,mom(2)) + qdt * gcak(ixO^S,tdir) * wCT(ixO^S,rho_)
-    w(ixO^S,mom(3)) = w(ixO^S,mom(3)) + qdt * gcak(ixO^S,pdir) * wCT(ixO^S,rho_)
+    w(ixO^S,mom(1)) = w(ixO^S,mom(1)) + qdt * gcak(ixO^S,1) * wCT(ixO^S,rho_)
+    w(ixO^S,mom(2)) = w(ixO^S,mom(2)) + qdt * gcak(ixO^S,2) * wCT(ixO^S,rho_)
+    w(ixO^S,mom(3)) = w(ixO^S,mom(3)) + qdt * gcak(ixO^S,3) * wCT(ixO^S,rho_)
 
     ! Update total energy e = e + vCT*rhoCT*qdt*gsource
     if (mhd_energy) then
-      w(ixO^S,e_) = w(ixO^S,e_) + qdt * (gcak(ixO^S,rdir) + gcak(ixO^S,tdir) + gcak(ixO^S,pdir)) * wCT(ixO^S,mom(1))
+      w(ixO^S,e_) = w(ixO^S,e_) + qdt * ( gcak(ixO^S,1) * wCT(ixO^S,mom(1)) &
+                                        + gcak(ixO^S,2) * wCT(ixO^S,mom(2)) &
+                                        + gcak(ixO^S,3) * wCT(ixO^S,mom(3)) )
     endif
 
     ! Update conservative vars if in rotating frame
@@ -443,6 +440,12 @@ contains
                          * (fcent(ixO^S,2) + fcor(ixO^S,2)) * wCT(ixO^S,rho_)
 
       w(ixO^S,mom(3)) = w(ixO^S,mom(3)) - qdt * fcor(ixO^S,3) * wCT(ixO^S,rho_)
+
+      ! Only centrifugal force performs fictitious work
+      if (mhd_energy) then
+        w(ixO^S,e_) = w(ixO^S,e_) - qdt * ( fcent(ixO^S,1) * wCT(ixO^S,mom(1)) &
+                                          + fcent(ixO^S,2) * wCT(ixO^S,mom(2)) )
+      endif
     endif
 
   end subroutine special_source
