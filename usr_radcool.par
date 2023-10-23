@@ -1,8 +1,9 @@
 !=================================================
-! Project : 2D adiabatic, magnetic CAK wind
+! Project : 2.5D non-isothermal magnetic CAK wind
 !
 ! Aim     : start from a 1D relaxed CAK wind to
 !           study wind-magnetosphere interaction
+!           in a fast rotating star
 !
 ! Config  : setup.pl -d=2
 !=================================================
@@ -12,42 +13,43 @@
   saveprim      = .true.
   autoconvert   = .true.
   nwauxio       = 2
-  convert_type  = 'vtuBCCmpi'
+  !convert_type  = 'tecplotmpi'
 /
 
 &savelist
   itsave(1,1) = 0
   itsave(1,2) = 0
   ditsave_log = 1000
-  dtsave_dat  = 5.0d-3
+  dtsave_dat  = 2.5d-2
 /
 
 &stoplist
   dtmin    = 1.0d-20
-  time_max = 0.5d0
+  time_max = 1.5d0
 /
 
 &methodlist
-  time_integrator = 'twostep'
-  flux_scheme     = 'hll'
-  limiter         = 'vanleer'
+  time_stepper = 'twostep'
+  flux_scheme  = 'hllc'
+  limiter      = 'vanleer'
+  check_small_values = .false.
 /
 
 &boundlist
   ! rho, mom1, mom2, mom3, e, b1, b2, b3
   typeboundary_min1 = 8*'special'
   typeboundary_max1 = 8*'cont'
-  typeboundary_min2 = 8*'pole'
-  typeboundary_max2 = 8*'pole'
+  typeboundary_min2 = 'symm','symm','asymm','asymm','symm','symm','asymm','asymm'
+  typeboundary_max2 = 'symm','symm','asymm','asymm','symm','symm','asymm','asymm'
 /
 
 &meshlist
-  domain_nx1     = 280 
-  domain_nx2     = 120
-  block_nx1      = 70 
-  block_nx2      = 30 
+  domain_nx1     = 256 
+  domain_nx2     = 128
+  block_nx1      = 16 
+  block_nx2      = 16 
   xprobmin1      = 1.0d0 
-  xprobmax1      = 7.0d0 
+  xprobmax1      = 10.0d0 
   xprobmin2      = 0.0d0
   xprobmax2      = 0.5d0
   stretch_dim(1) = 'uni'
@@ -59,13 +61,13 @@
 /
 
 &mhd_list
-  mhd_gravity           = .true.
-  mhd_energy            = .true.
-  mhd_gamma             = 1.666667d0
+  mhd_gravity = .true.
+  mhd_energy  = .true.
+  mhd_gamma   = 1.666667d0
+  typedivbfix = 'powell'
+  B0field     = .false.
   mhd_radiative_cooling = .true.  
-  mhd_rotating_frame    = .false.
-  typedivbfix           = 'powell'
-  B0field               = .false.	
+  mhd_cak_force = .true.
 /
 
 &rc_list
@@ -76,23 +78,22 @@
   tlow       = 1.0d0
 / 
 
-&rotating_frame_list
-  ! overwritten in the mod_usr.t based on rotational velocity
-  omega_frame = 1.0d0
+&cak_list
+  cak_alpha    = 0.65d0
+  gayley_qbar  = 2000.0d0
+  cak_1d_force = .true.
+  cak_1d_opt   = 1
+  cak_split    = .true.
+  cak_vector_force = .false.
 /
 
 &star_list
-  cakfile  = '../relaxed-CAKwinds/zetapup-fd1.blk'
-  lstar    = 8.0d5
+  cakfile  = 'relaxed-CAK-winds/ic-zetapup-30rs.blk'
   mstar    = 50.0d0
   rstar    = 20.0d0
   twind    = 4.0d4
-  imag     = -5.0d0    
-  rhobound = 1.2d-11
-  alpha    = 0.65d0
-  Qbar     = 2000.0d0
-  Qmax     = 0.00395d0
-  tstat    = 5.0d5
-  Wrot     = 0.0d0
-  ifrc     = 1 
+  etastar  = 10.0d0
+  rhobound = 2.0d-11
+  timestat = 5.0d5
+  Wrot     = 0.5d0
 /
