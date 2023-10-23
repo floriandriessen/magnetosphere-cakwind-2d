@@ -1,0 +1,14 @@
+*/
+!relaxed-CAK-winds/
+*.mod
+*.o
+*.h
+*.f
+*amrvac
+*.dat
+*.vtu
+*.vti
+*.out
+*.log
+makefile
+*.DS_Store
