@@ -93,6 +93,7 @@ contains
     usr_aux_output       => set_extravar_output
     usr_add_aux_names    => set_extravarnames_output
     usr_set_B0           => make_dipoleboy
+    usr_init_vector_potential => initvecpot_usr
 
     call MHD_activate()
     call set_cak_force_norm(rstar,twind)
@@ -173,10 +174,6 @@ contains
     ralf = 1.0d0 + (etastar + 0.25d0)**0.25d0 - 0.25d0**0.25d0
     rkep = Wrot**(-2.0d0/3.0d0)
     resc = 2.0d0**(1.0d0/3.0d0) * rkep
-
-    if (typedivbfix == 'ct') then
-      call mpistop('Constrained Transport for Bfield not yet implemented.')
-    endif
 
     if (mhd_energy .and. (.not.mhd_radiative_cooling)) then
       call mpistop('No support for adiabatic cooling. Add radiative cooling.')
@@ -284,9 +281,16 @@ contains
     w(ixO^S,mom(2)) = 0.0d0
     w(ixO^S,mom(3)) = dvrot * sin(x(ixO^S,2)) * drstar**2.0d0/x(ixO^S,1)
 
-    ! Setup dipole magnetic field based on Tanaka splitting or regular
+    ! Setup dipole field using Tanaka splitting, vector potential, or regular
     if (B0field) then
       w(ixO^S,mag(:)) = 0.0d0
+    elseif (stagger_grid) then
+      call b_from_vector_potential(ixGs^LL,ixI^L,ixO^L,block%ws,x)
+
+      ! Update cell-center B from cell-face B
+      call mhd_face_to_center(ixO^L,block)
+
+      w(ixO^S,mag(3)) = 0.0d0
     else
       w(ixO^S,mag(1)) = dbpole * cos(x(ixO^S,2)) * (drstar/x(ixO^S,1))**3.0d0
       w(ixO^S,mag(2)) = 0.5d0 * dbpole * sin(x(ixO^S,2)) &
@@ -311,6 +315,23 @@ contains
   end subroutine initial_conditions
 
 !==============================================================================
+! Initialise the vector potential on edges for b_from_vectorpotential().
+!==============================================================================
+  subroutine initvecpot_usr(ixI^L, ixC^L, xC, A, idir)
+
+    integer, intent(in)  :: ixI^L, ixC^L,idir
+    real(8), intent(in)  :: xC(ixI^S,1:ndim)
+    real(8), intent(out) :: A(ixI^S)
+
+    if (idir == 3) then
+      A(ixC^S) = 0.5d0*dbpole * (drstar/xC(ixC^S,1))**2.0d0 * sin(xC(ixC^S,2))
+    else
+      A(ixC^S) = 0.d0
+    end if
+
+  end subroutine initvecpot_usr
+
+!==============================================================================
 ! Special user boundary conditions at inner radial boundary:
 !   vr, Btheta, Bphi (extrapolated); rho, vtheta, vphi, Br (fixed)
 !==============================================================================
@@ -322,7 +343,7 @@ contains
     real(8), intent(inout) :: w(ixI^S,1:nw)
 
     ! Local variable
-    integer :: ir
+    integer :: ir, ixBs^L
 
     select case (iB)
     case(1)
@@ -364,6 +385,39 @@ contains
           ! delta Bphi
           w(ir^%1ixB^S,mag(3)) = 1.0d0/3.0d0 &
                * (-w(ir+2^%1ixB^S,mag(3)) + 4.0d0*w(ir+1^%1ixB^S,mag(3)))
+        enddo
+      !***********************
+      ! Constrained Transport
+      !***********************
+      elseif (stagger_grid) then
+        ! Br
+        ! Index shift for staggered grid in radial direction
+        ixBs^L=ixB^L-kr(1,^D);
+
+        block%ws(ixBs^S,1) = dbpole * cos(x(ixB^S,2))      &
+             * (drstar - 0.5d0 * block%dx(ixB^S,1))**2.0d0 &
+             / (x(ixB^S,1) - 0.5d0 * block%dx(ixB^S,1))**2.0d0
+
+        ! Btheta (Flo: CT contact method only works with etastar distinction)
+        ixBsmax^D=ixBmax^D;
+        ixBsmin^D=ixBmin^D-kr(^D,1);
+
+        if (etastar >= 1.0d0) then
+          do ir = ixBsmax1,ixBsmin1,-1
+            block%ws(ir^%1ixBs^S,2) = 1.0d0/3.0d0 &
+                 * (- block%ws(ir+2^%1ixBs^S,2)   &
+                 +  4.d0 * block%ws(ir+1^%1ixBs^S,2))
+          enddo
+        else
+          block%ws(ixBs^S,2) = 0.0d0
+        endif
+
+        call mhd_face_to_center(ixB^L,block)
+
+        ! Bphi
+        do ir = ixBmax1,ixBmin1,-1
+          w(ir^%1ixB^S,mag(3)) = 1.0d0/3.0d0 * (- w(ir+2^%1ixB^S,mag(3)) &
+               + 4.0d0 * w(ir+1^%1ixB^S,mag(3)))
         enddo
       !*********
       ! Regular
@@ -416,6 +470,82 @@ contains
       if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
       call mhd_to_conserved(ixI^L,ixI^L,w,x)
+
+    ! case(2)
+
+    !   do ir = ixBmin1,ixBmax1
+    !     ! r*r*rho = constant
+    !     w(ir^%1ixB^S,rho_) = w(ixBmin1-1^%1ixB^S,rho_) &
+    !          * (x(ixBmin1-1^%1ixB^S,1) / x(ir^%1ixB^S,1))**2.0d0
+
+    !     ! r*r*rho*vr = constant
+    !     w(ir^%1ixB^S,mom(1)) = w(ixBmin1-1^%1ixB^S,mom(1)) &
+    !          * (x(ixBmin1-1^%1ixB^S,1)/x(ir^%1ixB^S,1))**2.0d0
+
+    !     ! rho*vtheta = constant
+    !     w(ir^%1ixB^S,mom(2)) = w(ixBmin1-1^%1ixB^S,mom(2))
+
+    !     ! r*vphi = constant
+    !     w(ir^%1ixB^S,mom(3)) = &
+    !          (w(ixBmin1-1^%1ixB^S,mom(3)) / w(ixBmin1-1^%1ixB^S,rho_)) &
+    !          * (x(ixBmin1-1^%1ixB^S,1) / x(ir^%1ixB^S,1)) * w(ir^%1ixB^S,rho_)
+
+    !     !******************
+    !     ! Tanaka splitting
+    !     !******************
+    !     if (B0field) then
+    !       ! r*r*(B0r + delta Br) = constant
+    !       w(ir^%1ixB^S,mag(1)) = ( dbpole * cos(x(ixBmin1-1^%1ixB^S,2)) &
+    !            * (drstar / x(ixBmin1-1^%1ixB^S,1))**3.0d0               &
+    !            + w(ixBmin1-1^%1ixB^S,mag(1)) )                          &
+    !            * (x(ixBmin1-1^%1ixB^S,1) / x(ir^%1ixB^S,1))**2.0d0      &
+    !            - block%B0(ir^%1ixB^S,1,0)
+
+    !       ! (B0theta + delta Btheta) = constant
+    !       w(ir^%1ixB^S,mag(2)) = (0.5d0*dbpole * sin(x(ixBmin1-1^%1ixB^S,2)) &
+    !            * (drstar/x(ixBmin1-1^%1ixB^S,1))**3.0d0                      &
+    !            + w(ixBmin1-1^%1ixB^S,mag(2)))                                &
+    !            - block%B0(ir^%1ixB^S,2,0)
+
+    !       ! r*(B0phi + delta Bphi) = constant
+    !       w(ir^%1ixB^S,mag(3)) = w(ixBmin1-1^%1ixB^S,mag(3)) &
+    !            * x(ixBmin1-1^%1ixB^S,1) / x(ir^%1ixB^S,1)    &
+    !            - block%B0(ir^%1ixB^S,3,0)
+    !     !***********************
+    !     ! Constrained Transport
+    !     !***********************
+    !     elseif (stagger_grid) then
+    !       ! A*Br = constant
+    !       block%ws(ir^%1ixB^S,1) = block%ws(ixBmin1-1^%1ixB^S,1) &
+    !            * block%surfaceC(ixBmin1-1^%1ixB^S,1)             &
+    !            / block%surfaceC(ir^%1ixB^S,1)
+
+    !       ! Btheta = constant
+    !       block%ws(ir^%1ixB^S,2) = block%ws(ixBmin1-1^%1ixB^S,2)
+
+    !       call mhd_face_to_center(ixB^L,block)
+
+    !       ! r*Bphi = constant
+    !       w(ir^%1ixB^S,mag(3)) = w(ixBmin1-1^%1ixB^S,mag(3)) &
+    !            * x(ixBmin1-1^%1ixB^S,1) / x(ir^%1ixB^S,1)
+    !     !*********
+    !     ! Regular
+    !     !*********
+    !     else
+    !       ! r*r*Br = constant
+    !       w(ir^%1ixB^S,mag(1)) = w(ixBmin1-1^%1ixB^S,mag(1)) &
+    !            * (x(ixBmin1-1^%1ixB^S,1) / x(ir^%1ixB^S,1))**2.0d0
+
+    !       ! Btheta = constant
+    !       w(ir^%1ixB^S,mag(2)) = w(ixBmin1-1^%1ixB^S,mag(2))
+
+    !       ! r*Bphi = constant
+    !       w(ir^%1ixB^S,mag(3)) = w(ixBmin1-1^%1ixB^S,mag(3)) &
+    !            * x(ixBmin1-1^%1ixB^S,1) / x(ir^%1ixB^S,1)
+    !     endif
+    !   enddo
+
+    !   if (mhd_glm) w(ixB^S,psi_) = 0.0d0
 
     case default
       call mpistop("BC not specified")
