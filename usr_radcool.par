@@ -10,10 +10,6 @@
 
 &filelist
   base_filename = 'test/ms'
-  saveprim      = .true.
-  autoconvert   = .true.
-  nwauxio       = 2
-  !convert_type  = 'tecplotmpi'
 /
 
 &savelist

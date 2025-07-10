@@ -1,32 +1,25 @@
 !=================================================
 ! Project : 2.5D isothermal, magnetic CAK wind
 !
-! Aim     : start from a 1D relaxed CAK wind to
-!           study wind-magnetosphere interaction
-!
-! Config  : setup.pl -d=2
+! Aim     : convert binary output to ascii output
 !=================================================
 
 &filelist
   base_filename = 'test/ms'
-/
-
-&savelist
-  itsave(1,1) = 0
-  itsave(1,2) = 0
-  ditsave_log = 1000
-  dtsave_dat  = 2.5d-2
+  saveprim      = .true.
+  convert_type  = 'tecplotmpi'
+  nwauxio       = 2
 /
 
 &stoplist
   dtmin    = 1.0d-20
-  time_max = 0.5d0
+  time_max = 1.0d2
 /
 
 &methodlist
   time_stepper = 'twostep'
-  flux_scheme  = 3*'hll'
-  limiter      = 3*'vanleer'
+  flux_scheme  = 'hll'
+  limiter      = 'vanleer'
 /
 
 &boundlist
@@ -51,7 +44,7 @@
 /
 
 &paramlist
-  courantpar = 0.3d0 
+  courantpar = 0.3d0
 /
 
 &mhd_list
