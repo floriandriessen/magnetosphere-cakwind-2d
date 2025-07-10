@@ -25,8 +25,8 @@
 
 &methodlist
   time_stepper = 'twostep'
-  flux_scheme  = 3*'hll'
-  limiter      = 3*'vanleer'
+  flux_scheme  = 'hll'
+  limiter      = 'vanleer'
 /
 
 &boundlist
@@ -72,12 +72,12 @@
 /
 
 &star_list
-  cakfile  = 'relaxed-CAK-winds/ic-zetapup-30rs.blk'
-  mstar    = 50.0d0
-  rstar    = 20.0d0
-  twind    = 4.0d4
-  etastar  = 10.0d0
-  rhobound = 2.0d-11
-  timestat = 2.0d5
-  Wrot     = 0.01d0
+  cakfile      = 'relaxed-CAK-winds/ic-zetapup-30rs.blk'
+  mstar_sol    = 50.0d0
+  rstar_sol    = 20.0d0
+  twind_cgs    = 4.0d4
+  etastar      = 10.0d0
+  rhosurf_cgs  = 2.0d-11
+  timestat_cgs = 2.0d5
+  Wrot         = 0.01d0
 /
